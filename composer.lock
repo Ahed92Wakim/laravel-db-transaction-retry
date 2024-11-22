@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "e35d07c92dd5bb7f0b29c2b64db4c788",
+    "content-hash": "446692935e766d93ab75454e839f17aa",
     "packages": [
         {
             "name": "brick/math",
@@ -1876,7 +1876,7 @@
         },
         {
             "name": "opcodesio/log-viewer",
-            "version": "dev-main",
+            "version": "v3.12.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/opcodesio/log-viewer.git",
@@ -1909,7 +1909,6 @@
             "suggest": {
                 "guzzlehttp/guzzle": "Required for multi-host support. ^7.2"
             },
-            "default-branch": true,
             "type": "library",
             "extra": {
                 "laravel": {
@@ -4956,9 +4955,7 @@
     "packages-dev": [],
     "aliases": [],
     "minimum-stability": "stable",
-    "stability-flags": {
-        "opcodesio/log-viewer": 20
-    },
+    "stability-flags": [],
     "prefer-stable": false,
     "prefer-lowest": false,
     "platform": {
