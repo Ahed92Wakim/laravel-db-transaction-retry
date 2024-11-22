@@ -12,7 +12,10 @@
     "autoload": {
         "psr-4": {
             "MysqlDeadlocks\\RetryHelper\\": "src/"
-        }
+        },
+        "files": [
+            "src/Helper.php"
+        ]
     },
     "extra": {
         "laravel": {
