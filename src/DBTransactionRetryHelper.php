@@ -14,12 +14,12 @@ class DBTransactionRetryHelper
      * @param callable $callback The transaction logic to execute.
      * @param int $maxRetries Number of times to retry on deadlock.
      * @param int $retryDelay Delay between retries in seconds.
-     * @param string $logFileName
-     * @return void
+     * @param string $logFileName The log file name
+     * @return mixed
      * @throws QueryException
      * @throws Throwable
      */
-    public static function transactionWithRetry(callable $callback, int $maxRetries = 5, int $retryDelay = 5, string $logFileName = 'mysql-deadlocks-log')
+    public static function transactionWithRetry(callable $callback, int $maxRetries = 5, int $retryDelay = 5, string $logFileName = 'mysql-deadlocks-log'): mixed
     {
         $attempt = 0;
         $throwable = null;
@@ -27,11 +27,11 @@ class DBTransactionRetryHelper
         while ($attempt < $maxRetries) {
             try {
                 // Execute the transaction
-                $done = true;
+                $exceptionCatched = false;
                 return DB::transaction($callback);
 
             } catch (QueryException $e) {
-                $done = false;
+                $exceptionCatched = true;
                 // Check if the error is a deadlock (MySQL error code 1213)
                 if ($e->getCode() == 1213 || $e->getCode() == 40001 || $e->errorInfo[1] == 1213) {
                     $attempt++;
@@ -68,7 +68,7 @@ class DBTransactionRetryHelper
                     $throwable = $e;
                 }
             } finally {
-                if (is_null($throwable) and $done) {
+                if (is_null($throwable) and !$exceptionCatched) {
                     if (count($log) > 0) {
                         generateLog($log[count($log) - 1], $logFileName, 'warning');
                     }
