@@ -1,5 +1,5 @@
 {
-    "name": "mysql-deadlocks/retry-helper",
+    "name": "ahed92wakim/laravel-mysql-deadlock-retry",
     "description": "Retrying database transaction when deadlocks occurred",
     "type": "library",
     "minimum-stability": "stable",
