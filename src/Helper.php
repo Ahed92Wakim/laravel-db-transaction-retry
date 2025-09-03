@@ -1,6 +1,5 @@
 <?php
 
-
 use Illuminate\Support\Facades\Log;
 
 if (!function_exists('getDebugBacktraceArray')) {
@@ -22,19 +21,24 @@ if (!function_exists('getDebugBacktraceArray')) {
 if (!function_exists('generateLog')) {
     function generateLog($var, $logFileName, $logType = 'error'): void
     {
-        if (is_null($logFileName)) {
-            $logFilePath = storage_path('logs/general_' . now()->toDateString() . '.log');
+        $date = function_exists('now') ? now()->toDateString() : date('Y-m-d');
+
+        if (empty($logFileName)) {
+            $logFilePath = storage_path('logs/general_' . $date . '.log');
         } else {
-            $logFilePath = storage_path("logs/{$logFileName}_" . now()->toDateString() . '.log');
+            $logFilePath = storage_path("logs/{$logFileName}_" . $date . '.log');
         }
         $log = Log::build([
             'driver' => 'single',
             'path' => $logFilePath,
         ]);
-        if ($logType == 'error') {
-            $log->error(var_export($var, true));
-        } elseif ($logType == 'warning') {
-            $log->warning(var_export($var, true));
+        $payload = is_array($var) ? $var : ['message' => (string) $var];
+        if ($logType === 'error') {
+            $log->error($payload);
+        } elseif ($logType === 'warning') {
+            $log->warning($payload);
+        } else {
+            $log->info($payload);
         }
     }
 }
