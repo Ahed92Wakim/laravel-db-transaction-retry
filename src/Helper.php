@@ -24,9 +24,9 @@ if (!function_exists('generateLog')) {
         $date = function_exists('now') ? now()->toDateString() : date('Y-m-d');
 
         if (empty($logFileName)) {
-            $logFilePath = storage_path('logs/' . date('Y-m-d') . '/general_' . $date . '.log');
+            $logFilePath = storage_path('logs/' . $date . '/general.log');
         } else {
-            $logFilePath = storage_path("logs/" . date('Y-m-d') . "/{$logFileName}_" . $date . '.log');
+            $logFilePath = storage_path("logs/" . $date . "/{$logFileName}.log");
         }
         $log = Log::build([
             'driver' => 'single',
