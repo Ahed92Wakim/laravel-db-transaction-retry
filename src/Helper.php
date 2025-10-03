@@ -36,12 +36,14 @@ if (!function_exists('generateLog')) {
         $attempts = $var['attempt'] ?? 0;
         $errorInfo = $var['errorInfo'][2] ?? '';
 
-        if ($logType === 'error') {
-            $log->error($attempts . ' ' . $errorInfo, $payload);
-        } elseif ($logType === 'warning') {
-            $log->warning($attempts . ' ' . $errorInfo, $payload);
+        if ($logType === 'warning') {
+            // Transaction succeeded after retries
+            $title = "[MYSQL DEADLOCK RETRY - SUCCESS] Attempts: $attempts - Warning: $errorInfo";
+            $log->warning($title, $payload);
         } else {
-            $log->info($attempts . ' ' . $errorInfo, $payload);
+            // Transaction failed after all attempts
+            $title = "[MYSQL DEADLOCK RETRY - FAILED] Attempts: $attempts - Error: $errorInfo";
+            $log->error($title, $payload);
         }
     }
 }
