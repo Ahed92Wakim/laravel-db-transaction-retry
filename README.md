@@ -19,13 +19,13 @@ use MysqlDeadlocks\RetryHelper\DBTransactionRetryHelper as Retry;
 $result = Retry::transactionWithRetry(function () {
     // Your DB logic here (queries, models, etc.)
     // Return any value and it will be returned from transactionWithRetry
-}, maxRetries: 5, retryDelay: 2, logFileName: 'mysql-deadlocks-log');
+}, maxRetries: 3, retryDelay: 2, logFileName: 'mysql-deadlocks-log');
 ```
 
 Parameters:
-- maxRetries: number of attempts (default 5)
-- retryDelay: base delay in seconds; actual wait uses exponential backoff with jitter (default 5)
-- logFileName: file prefix under storage/logs (default 'mysql-deadlocks-log')
+- maxRetries: number of attempts (default 3)
+- retryDelay: base delay in seconds; actual wait uses exponential backoff with jitter (default 2)
+- logFileName: file prefix under storage/logs/{today date} (default 'mysql-deadlocks.log')
 
 Notes:
 - Non-deadlock QueryException is thrown immediately.
