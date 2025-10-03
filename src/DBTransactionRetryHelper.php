@@ -2,9 +2,12 @@
 
 namespace MysqlDeadlocks\RetryHelper;
 
+use Random\RandomException;
 use Throwable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\App;
 
 class DBTransactionRetryHelper
 {
@@ -22,53 +25,42 @@ class DBTransactionRetryHelper
     public static function transactionWithRetry(callable $callback, int $maxRetries = 3, int $retryDelay = 2, string $logFileName = 'mysql-deadlocks'): mixed
     {
         $attempt = 0;
-        $throwable = null;
         $log = [];
+
         while ($attempt < $maxRetries) {
+            $throwable = null;
+            $exceptionCatched = false;
+
             try {
                 // Execute the transaction
-                $exceptionCatched = false;
-                return DB::transaction($callback);
+                $result = DB::transaction($callback);
+                return $result;
 
             } catch (QueryException $e) {
                 $exceptionCatched = true;
-                // Check if the error is a deadlock (MySQL error code 1213)
-                if ($e->getCode() == 1213 || $e->getCode() == 40001 || $e->errorInfo[1] == 1213) {
+
+                // Determine if this is a retryable deadlock/serialization failure
+                $isDeadlock = static::isDeadlockOrSerializationError($e);
+
+                if ($isDeadlock) {
                     $attempt++;
-                    $log[] = [
-                        'attempt' => $attempt,
-                        'ExceptionName' => get_class($e),
-                        'QueryException' => $e->getMessage(),
-                        'url' => request()->getUri() ?? null,
-                        'method' => request()->getMethod() ?? null,
-                        'token' => request()->header()['authorization'] ?? null,
-                        'userId' => request()->user()->id ?? null,
-                        'trace' => getDebugBacktraceArray() ?? null,
-                    ];
+                    $log[] = static::buildLogContext($e, $attempt);
 
                     if ($attempt >= $maxRetries) {
-                        // Generate log when max retries are reached
-                        $log[] = [
-                            'attempt' => $attempt,
-                            'ExceptionName' => get_class($e),
-                            'QueryException' => $e->getMessage(),
-                            'url' => request()->getUri() ?? null,
-                            'method' => request()->getMethod() ?? null,
-                            'token' => request()->header()['authorization'] ?? null,
-                            'userId' => request()->user()->id ?? null,
-                            'trace' => getDebugBacktraceArray() ?? null,
-                        ];
                         $throwable = $e;
+                    } else {
+                        // Exponential backoff with jitter (minimal change but more robust)
+                        $delay = static::backoffDelay($retryDelay, $attempt);
+                        sleep($delay);
+                        continue; // retry next loop
                     }
-
-                    // Wait before retrying
-                    sleep($retryDelay);
                 } else {
-                    // Re-throw exception if it's not a deadlock
+                    // Non-deadlock exception: propagate
                     $throwable = $e;
                 }
             } finally {
-                if (is_null($throwable) and !$exceptionCatched) {
+                if (is_null($throwable) && !$exceptionCatched) {
+                    // Success on the first try; optionally log last attempt as warning
                     if (count($log) > 0) {
                         generateLog($log[count($log) - 1], $logFileName, 'warning');
                     }
