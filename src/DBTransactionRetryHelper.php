@@ -22,7 +22,7 @@ class DBTransactionRetryHelper
      * @throws QueryException
      * @throws Throwable
      */
-    public static function transactionWithRetry(callable $callback, int $maxRetries = 5, int $retryDelay = 5, string $logFileName = 'mysql-deadlocks-log'): mixed
+    public static function transactionWithRetry(callable $callback, int $maxRetries = 3, int $retryDelay = 2, string $logFileName = 'mysql-deadlocks'): mixed
     {
         $attempt = 0;
         $log = [];
@@ -113,6 +113,7 @@ class DBTransactionRetryHelper
 
         return array_merge([
             'attempt' => $attempt,
+            'errorInfo' => $e->errorInfo,
             'ExceptionName' => get_class($e),
             'QueryException' => $e->getMessage(),
             'trace' => getDebugBacktraceArray() ?? null,

@@ -24,21 +24,24 @@ if (!function_exists('generateLog')) {
         $date = function_exists('now') ? now()->toDateString() : date('Y-m-d');
 
         if (empty($logFileName)) {
-            $logFilePath = storage_path('logs/general_' . $date . '.log');
+            $logFilePath = storage_path('logs/' . date('Y-m-d') . 'general_' . $date . '.log');
         } else {
-            $logFilePath = storage_path("logs/{$logFileName}_" . $date . '.log');
+            $logFilePath = storage_path("logs/" . date('Y-m-d') . "{$logFileName}_" . $date . '.log');
         }
         $log = Log::build([
             'driver' => 'single',
             'path' => $logFilePath,
         ]);
-        $payload = is_array($var) ? $var : ['message' => (string) $var];
+        $payload = is_array($var) ? $var : ['message' => (string)$var];
+        $attempts = $var['attempt'] ?? 0;
+        $errorInfo = $var['errorInfo'][2] ?? '';
+
         if ($logType === 'error') {
-            $log->error($payload);
+            $log->error($attempts . ' ' . $errorInfo, $payload);
         } elseif ($logType === 'warning') {
-            $log->warning($payload);
+            $log->warning($attempts . ' ' . $errorInfo, $payload);
         } else {
-            $log->info($payload);
+            $log->info($attempts . ' ' . $errorInfo, $payload);
         }
     }
 }
