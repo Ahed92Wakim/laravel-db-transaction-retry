@@ -139,10 +139,10 @@ class DBTransactionRetryHelper
             'Exception' => get_class($e),
             'message' => $e->getMessage(),
             'sql' => $sql,
-            'bindings' => static::stringifyBindings($bindings),
+            'bindings' => stringifyBindings($bindings),
             'errorInfo' => $e->errorInfo,
             'connection' => $connectionName,
-            'trace' => static::safeTrace(),
+            'trace' => getDebugBacktraceArray(),
         ]);
     }
 
@@ -157,50 +157,5 @@ class DBTransactionRetryHelper
         $min = max(1, $delay - $jitter);
         $max = $delay + $jitter;
         return random_int($min, $max);
-    }
-
-    protected static function stringifyBindings(array $bindings): array
-    {
-        return array_map(function ($b) {
-            if ($b instanceof \DateTimeInterface) {
-                return $b->format('Y-m-d H:i:s.u');
-            }
-            if (is_object($b)) {
-                return '[object ' . get_class($b) . ']';
-            }
-            if (is_resource($b)) {
-                return '[resource]';
-            }
-            if (is_string($b)) {
-                // Trim very long strings to avoid log bloat
-                return mb_strlen($b) > 500 ? (mb_substr($b, 0, 500) . '…[+trimmed]') : $b;
-            }
-            if (is_array($b)) {
-                // Compact arrays
-                $json = @json_encode($b, JSON_UNESCAPED_UNICODE);
-
-                return $json !== false
-                    ? (mb_strlen($json) > 500 ? (mb_substr($json, 0, 500) . '…[+trimmed]') : $json)
-                    : '[array]';
-            }
-
-            return $b;
-        }, $bindings);
-    }
-
-    protected static function safeTrace(): array
-    {
-        try {
-            return collect(debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 15))
-                ->map(fn($f) => [
-                    'file' => $f['file'] ?? null,
-                    'line' => $f['line'] ?? null,
-                    'function' => $f['function'] ?? null,
-                    'class' => $f['class'] ?? null,
-                    'type' => $f['type'] ?? null,
-                ])->all();
-        } catch (Throwable) {
-            return [];
-        }
     }
 }
