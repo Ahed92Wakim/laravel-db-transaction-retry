@@ -34,15 +34,16 @@ if (!function_exists('generateLog')) {
         ]);
         $payload = is_array($var) ? $var : ['message' => (string)$var];
         $attempts = $var['attempt'] ?? 0;
-        $errorInfo = $var['errorInfo'][2] ?? '';
+        $maxRetries = $var['maxRetries'] ?? 0;
+        $trxLabel = $var['trxLabel'] ?? '';
 
         if ($logType === 'warning') {
             // Transaction succeeded after retries
-            $title = "[MYSQL DEADLOCK RETRY - SUCCESS] Attempts: $attempts - Warning: $errorInfo";
+            $title = "[$trxLabel] [MYSQL DEADLOCK RETRY - SUCCESS] After (Attempts: $attempts/$maxRetries) - Warning";
             $log->warning($title, $payload);
         } else {
             // Transaction failed after all attempts
-            $title = "[MYSQL DEADLOCK RETRY - FAILED] Attempts: $attempts - Error: $errorInfo";
+            $title = "[$trxLabel] [MYSQL DEADLOCK RETRY - FAILED] After (Attempts: $attempts/$maxRetries) - Error";
             $log->error($title, $payload);
         }
     }

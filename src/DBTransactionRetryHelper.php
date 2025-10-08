@@ -2,30 +2,31 @@
 
 namespace MysqlDeadlocks\RetryHelper;
 
+use Closure;
 use Random\RandomException;
 use Throwable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Database\QueryException;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\App;
 
 class DBTransactionRetryHelper
 {
     /**
      * Perform a database transaction with retry logic in case of deadlocks.
      *
-     * @param callable $callback The transaction logic to execute.
+     * @param Closure $callback The transaction logic to execute.
      * @param int $maxRetries Number of times to retry on deadlock.
      * @param int $retryDelay Delay between retries in seconds.
      * @param string $logFileName The log file name
+     * @param string $trxLabel The transaction label
      * @return mixed
-     * @throws QueryException
+     * @throws RandomException
      * @throws Throwable
      */
-    public static function transactionWithRetry(callable $callback, int $maxRetries = 3, int $retryDelay = 2, string $logFileName = 'mysql-deadlocks'): mixed
+    public static function transactionWithRetry(Closure $callback, int $maxRetries = 3, int $retryDelay = 2, string $logFileName = 'database/mysql-deadlocks', string $trxLabel = ''): mixed
     {
         $attempt = 0;
         $log = [];
+        $isDeadlock = false;
 
         while ($attempt < $maxRetries) {
             $throwable = null;
@@ -44,7 +45,7 @@ class DBTransactionRetryHelper
 
                 if ($isDeadlock) {
                     $attempt++;
-                    $log[] = static::buildLogContext($e, $attempt);
+                    $log[] = static::buildLogContext($e, $attempt, $maxRetries, $trxLabel);
 
                     if ($attempt >= $maxRetries) {
                         $throwable = $e;
@@ -65,8 +66,13 @@ class DBTransactionRetryHelper
                         generateLog($log[count($log) - 1], $logFileName, 'warning');
                     }
                 } elseif (!is_null($throwable)) {
+                    // Ensure non-deadlock exceptions are logged
                     if (count($log) > 0) {
                         generateLog($log[count($log) - 1], $logFileName);
+                    } else if (!$isDeadlock && $throwable instanceof QueryException) {
+                        // Log non-deadlock QueryException immediately
+                        $context = static::buildLogContext($throwable, $attempt, $maxRetries, $trxLabel);
+                        generateLog($context, $logFileName);
                     }
                     throw $throwable;
                 }
@@ -89,8 +95,21 @@ class DBTransactionRetryHelper
             ;
     }
 
-    protected static function buildLogContext(QueryException $e, int $attempt): array
+    protected static function buildLogContext(QueryException $e, int $attempt, int $maxRetries, string $trxLabel): array
     {
+        // Extract sql & bindings safely
+        $sql = method_exists($e, 'getSql') ? $e->getSql() : null;
+        $bindings = method_exists($e, 'getBindings') ? $e->getBindings() : [];
+
+        // Try to read connection name
+        $connectionName = null;
+        try {
+            $connection = DB::connection();
+            $connectionName = $connection?->getName();
+        } catch (Throwable) {
+            // ignore
+        }
+
         $requestData = [
             'url' => null,
             'method' => null,
@@ -99,25 +118,32 @@ class DBTransactionRetryHelper
         ];
 
         try {
-            // Only access request() when available (HTTP context)
             if (function_exists('request') && app()->bound('request')) {
                 $req = request();
                 $requestData['url'] = method_exists($req, 'getUri') ? $req->getUri() : null;
                 $requestData['method'] = method_exists($req, 'getMethod') ? $req->getMethod() : null;
-                $requestData['token'] = method_exists($req, 'header') ? ($req->header('authorization') ?? null) : null;
+                if (method_exists($req, 'header')) {
+                    $auth = $req->header('authorization');
+                    $requestData['authHeaderLen'] = $auth ? strlen($auth) : null;
+                }
                 $requestData['userId'] = method_exists($req, 'user') && $req->user() ? ($req->user()->id ?? null) : null;
             }
         } catch (Throwable) {
-            // ignore request context errors for CLI/queue
+            // ignore
         }
 
-        return array_merge([
+        return array_merge($requestData, [
             'attempt' => $attempt,
+            'maxRetries' => $maxRetries,
+            'trxLabel' => $trxLabel,
+            'Exception' => get_class($e),
+            'message' => $e->getMessage(),
+            'sql' => $sql,
+            'bindings' => static::stringifyBindings($bindings),
             'errorInfo' => $e->errorInfo,
-            'ExceptionName' => get_class($e),
-            'QueryException' => $e->getMessage(),
-            'trace' => getDebugBacktraceArray() ?? null,
-        ], $requestData);
+            'connection' => $connectionName,
+            'trace' => static::safeTrace(),
+        ]);
     }
 
     /**
@@ -131,5 +157,50 @@ class DBTransactionRetryHelper
         $min = max(1, $delay - $jitter);
         $max = $delay + $jitter;
         return random_int($min, $max);
+    }
+
+    protected static function stringifyBindings(array $bindings): array
+    {
+        return array_map(function ($b) {
+            if ($b instanceof \DateTimeInterface) {
+                return $b->format('Y-m-d H:i:s.u');
+            }
+            if (is_object($b)) {
+                return '[object ' . get_class($b) . ']';
+            }
+            if (is_resource($b)) {
+                return '[resource]';
+            }
+            if (is_string($b)) {
+                // Trim very long strings to avoid log bloat
+                return mb_strlen($b) > 500 ? (mb_substr($b, 0, 500) . '…[+trimmed]') : $b;
+            }
+            if (is_array($b)) {
+                // Compact arrays
+                $json = @json_encode($b, JSON_UNESCAPED_UNICODE);
+
+                return $json !== false
+                    ? (mb_strlen($json) > 500 ? (mb_substr($json, 0, 500) . '…[+trimmed]') : $json)
+                    : '[array]';
+            }
+
+            return $b;
+        }, $bindings);
+    }
+
+    protected static function safeTrace(): array
+    {
+        try {
+            return collect(debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 15))
+                ->map(fn($f) => [
+                    'file' => $f['file'] ?? null,
+                    'line' => $f['line'] ?? null,
+                    'function' => $f['function'] ?? null,
+                    'class' => $f['class'] ?? null,
+                    'type' => $f['type'] ?? null,
+                ])->all();
+        } catch (Throwable) {
+            return [];
+        }
     }
 }
