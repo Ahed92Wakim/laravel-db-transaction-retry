@@ -24,6 +24,9 @@ class DBTransactionRetryHelper
      */
     public static function transactionWithRetry(Closure $callback, int $maxRetries = 3, int $retryDelay = 2, string $logFileName = 'database/mysql-deadlocks', string $trxLabel = ''): mixed
     {
+        if (is_null($trxLabel)){
+            $trxLabel = '';
+        }
         $attempt = 0;
         $log = [];
         $isDeadlock = false;
@@ -34,6 +37,7 @@ class DBTransactionRetryHelper
 
             try {
                 // Execute the transaction
+                $trxLabel === '' || app()->instance('tx.label', $trxLabel);
                 $result = DB::transaction($callback);
                 return $result;
 
