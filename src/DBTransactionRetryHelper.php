@@ -101,13 +101,13 @@ class DBTransactionRetryHelper
         $sql = method_exists($e, 'getSql') ? $e->getSql() : null;
         $bindings = method_exists($e, 'getBindings') ? $e->getBindings() : [];
 
-        // Try to read connection name
-        $connectionName = null;
-        try {
-            $connection = DB::connection();
-            $connectionName = $connection?->getName();
-        } catch (Throwable) {
-            // ignore
+        $connectionName = $e->getConnectionName();
+        $conn = DB::connection($connectionName);
+
+        // if laravel version <= 11.x then getRawSql() is not available and we will do it manually
+        $rawSql = method_exists($e, 'getRawSql') ? $e->getRawSql() : null;
+        if (is_null($rawSql) && !is_null($sql) && !empty($bindings)) {
+            $rawSql = $conn->getQueryGrammar()->substituteBindingsIntoRawSql($sql, $bindings);
         }
 
         $requestData = [
@@ -136,11 +136,8 @@ class DBTransactionRetryHelper
             'attempt' => $attempt,
             'maxRetries' => $maxRetries,
             'trxLabel' => $trxLabel,
-            'Exception' => get_class($e),
-            'message' => $e->getMessage(),
-            'sql' => $sql,
-            'bindings' => stringifyBindings($bindings),
             'errorInfo' => $e->errorInfo,
+            'rawSql' => $rawSql,
             'connection' => $connectionName,
             'trace' => getDebugBacktraceArray(),
         ]);
