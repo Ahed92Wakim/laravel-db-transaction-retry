@@ -24,16 +24,17 @@ class DBTransactionRetryHelper
      */
     public static function transactionWithRetry(Closure $callback, int $maxRetries = 3, int $retryDelay = 2, string $logFileName = 'database/mysql-deadlocks', string $trxLabel = ''): mixed
     {
-        if (is_null($trxLabel)){
+        if (is_null($trxLabel)) {
             $trxLabel = '';
         }
         $attempt = 0;
         $log = [];
-        $isDeadlock = false;
 
         while ($attempt < $maxRetries) {
+            // reset per-attempt flags to avoid stale values
             $throwable = null;
             $exceptionCatched = false;
+            $isDeadlock = false;
 
             try {
                 // Execute the transaction
@@ -44,7 +45,7 @@ class DBTransactionRetryHelper
             } catch (QueryException $e) {
                 $exceptionCatched = true;
 
-                // Determine if this is a retryable deadlock/serialization failure
+                // Only deadlock/serialization *may* be retried and logged
                 $isDeadlock = static::isDeadlockOrSerializationError($e);
 
                 if ($isDeadlock) {
@@ -52,38 +53,38 @@ class DBTransactionRetryHelper
                     $log[] = static::buildLogContext($e, $attempt, $maxRetries, $trxLabel);
 
                     if ($attempt >= $maxRetries) {
+                        // exhausted retries — throw after logging below in finally
                         $throwable = $e;
                     } else {
-                        // Exponential backoff with jitter (minimal change but more robust)
+                        // Exponential backoff with jitter
                         $delay = static::backoffDelay($retryDelay, $attempt);
                         sleep($delay);
-                        continue; // retry next loop
+                        continue; // retry
                     }
                 } else {
-                    // Non-deadlock exception: propagate
+                    // Non-deadlock: DO NOT log, just rethrow
                     $throwable = $e;
                 }
             } finally {
                 if (is_null($throwable) && !$exceptionCatched) {
-                    // Success on the first try; optionally log last attempt as warning
+                    // Success on first try, nothing to do.
+                    // If you want to warn when there WERE previous retries that succeeded, keep this block:
                     if (count($log) > 0) {
+                        // optional: downgrade to warning for eventual success after retries
                         generateLog($log[count($log) - 1], $logFileName, 'warning');
                     }
                 } elseif (!is_null($throwable)) {
-                    // Ensure non-deadlock exceptions are logged
-                    if (count($log) > 0) {
+                    // We only log when it is a DEADLOCK and retries are exhausted.
+                    if ($isDeadlock && count($log) > 0) {
                         generateLog($log[count($log) - 1], $logFileName);
-                    } else if (!$isDeadlock && $throwable instanceof QueryException) {
-                        // Log non-deadlock QueryException immediately
-                        $context = static::buildLogContext($throwable, $attempt, $maxRetries, $trxLabel);
-                        generateLog($context, $logFileName);
                     }
+
+                    // For NON-deadlock, nothing is logged — just throw.
                     throw $throwable;
                 }
             }
         }
 
-        // If we exit the loop without returning, throw a generic runtime exception
         throw new \RuntimeException('Transaction with retry exhausted after ' . $maxRetries . ' attempts.');
     }
 
