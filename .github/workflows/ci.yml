@@ -1,8 +1,10 @@
 name: CI
 
 on:
+  push:
+    branches: [ develop, main ]
   pull_request:
-    branches: [ master ]
+    branches: [ develop, main ]
 
 jobs:
   phpunit:
