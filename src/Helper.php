@@ -8,11 +8,11 @@ if (! function_exists('getDebugBacktraceArray')) {
         try {
             return collect(debug_backtrace($option, $limit))
                 ->map(fn ($f) => [
-                    'file' => $f['file'] ?? null,
-                    'line' => $f['line'] ?? null,
+                    'file'     => $f['file']     ?? null,
+                    'line'     => $f['line']     ?? null,
                     'function' => $f['function'] ?? null,
-                    'class' => $f['class'] ?? null,
-                    'type' => $f['type'] ?? null,
+                    'class'    => $f['class']    ?? null,
+                    'type'     => $f['type']     ?? null,
                 ])->all();
         } catch (Throwable) {
             return [];
@@ -59,16 +59,16 @@ if (!function_exists('generateLog')) {
         if (empty($logFileName)) {
             $logFilePath = storage_path('logs/' . $date . '/general.log');
         } else {
-            $logFilePath = storage_path("logs/" . $date . "/{$logFileName}.log");
+            $logFilePath = storage_path('logs/' . $date . "/{$logFileName}.log");
         }
         $log = Log::build([
             'driver' => 'single',
-            'path' => $logFilePath,
+            'path'   => $logFilePath,
         ]);
-        $payload = is_array($var) ? $var : ['message' => (string)$var];
-        $attempts = $var['attempt'] ?? 0;
+        $payload    = is_array($var) ? $var : ['message' => (string)$var];
+        $attempts   = $var['attempt']    ?? 0;
         $maxRetries = $var['maxRetries'] ?? 0;
-        $trxLabel = $var['trxLabel'] ?? '';
+        $trxLabel   = $var['trxLabel']   ?? '';
 
         if ($logType === 'warning') {
             // Transaction succeeded after retries
