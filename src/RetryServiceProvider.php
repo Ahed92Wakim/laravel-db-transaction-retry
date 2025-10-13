@@ -8,20 +8,16 @@ class RetryServiceProvider extends ServiceProvider
 {
     /**
      * Register any application services.
-     *
-     * @return void
      */
-    public function register()
+    public function register(): void
     {
         // Register bindings or helpers here (if needed in the future)
     }
 
     /**
      * Bootstrap any application services.
-     *
-     * @return void
      */
-    public function boot()
+    public function boot(): void
     {
         // You can publish config files or perform other setup tasks here
     }
