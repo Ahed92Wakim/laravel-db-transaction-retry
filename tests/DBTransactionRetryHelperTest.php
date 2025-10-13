@@ -23,7 +23,7 @@ final class DBTransactionRetryHelperTest extends TestCase
     {
         parent::setUp();
 
-        $this->database  = new FakeDatabaseManager();
+        $this->database   = new FakeDatabaseManager();
         $this->logManager = new FakeLogManager();
 
         $this->app->instance('db', $this->database);
@@ -72,7 +72,7 @@ final class DBTransactionRetryHelperTest extends TestCase
     public function testThrowsAfterMaxRetriesAndLogsError(): void
     {
         try {
-            DBTransactionRetryHelper::transactionWithRetry(function () {
+            DBTransactionRetryHelper::transactionWithRetry(function (): void {
                 throw $this->makeQueryException(1213);
             }, maxRetries: 3, retryDelay: 1, trxLabel: 'payments');
             self::fail('Expected QueryException was not thrown.');
@@ -98,7 +98,7 @@ final class DBTransactionRetryHelperTest extends TestCase
     public function testDoesNotRetryForNonDeadlockQueryException(): void
     {
         try {
-            DBTransactionRetryHelper::transactionWithRetry(function () {
+            DBTransactionRetryHelper::transactionWithRetry(function (): void {
                 throw $this->makeQueryException(999, 0);
             }, maxRetries: 3, retryDelay: 1);
             self::fail('Expected QueryException was not thrown.');
@@ -114,7 +114,7 @@ final class DBTransactionRetryHelperTest extends TestCase
     private function makeQueryException(int $driverCode, int $sqlState = 40001): QueryException
     {
         $sqlStateString = str_pad((string) $sqlState, 5, '0', STR_PAD_LEFT);
-        $pdo = new \PDOException('SQLSTATE[' . $sqlStateString . ']: Driver error', $sqlState);
+        $pdo            = new \PDOException('SQLSTATE[' . $sqlStateString . ']: Driver error', $sqlState);
         $pdo->errorInfo = [$sqlStateString, $driverCode, 'Driver error'];
 
         return new QueryException(

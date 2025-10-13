@@ -12,4 +12,3 @@ if (! function_exists('storage_path')) {
         return $path === '' ? $base : $base . '/' . ltrim($path, '/');
     }
 }
-
