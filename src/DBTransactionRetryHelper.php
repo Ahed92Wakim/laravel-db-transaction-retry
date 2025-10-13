@@ -3,10 +3,10 @@
 namespace MysqlDeadlocks\RetryHelper;
 
 use Closure;
+use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\DB;
 use Random\RandomException;
 use Throwable;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Database\QueryException;
 
 class DBTransactionRetryHelper
 {
@@ -18,29 +18,34 @@ class DBTransactionRetryHelper
      * @param int $retryDelay Delay between retries in seconds.
      * @param string $logFileName The log file name
      * @param string $trxLabel The transaction label
-     * @return mixed
      * @throws RandomException
      * @throws Throwable
      */
     public static function transactionWithRetry(Closure $callback, int $maxRetries = 3, int $retryDelay = 2, string $logFileName = 'database/mysql-deadlocks', string $trxLabel = ''): mixed
     {
+        if (is_null($trxLabel)) {
+            $trxLabel = '';
+        }
         $attempt = 0;
-        $log = [];
-        $isDeadlock = false;
+        $log     = [];
 
         while ($attempt < $maxRetries) {
-            $throwable = null;
+            // reset per-attempt flags to avoid stale values
+            $throwable        = null;
             $exceptionCatched = false;
+            $isDeadlock       = false;
 
             try {
                 // Execute the transaction
+                $trxLabel === '' || app()->instance('tx.label', $trxLabel);
                 $result = DB::transaction($callback);
+
                 return $result;
 
             } catch (QueryException $e) {
                 $exceptionCatched = true;
 
-                // Determine if this is a retryable deadlock/serialization failure
+                // Only deadlock/serialization *may* be retried and logged
                 $isDeadlock = static::isDeadlockOrSerializationError($e);
 
                 if ($isDeadlock) {
@@ -48,82 +53,82 @@ class DBTransactionRetryHelper
                     $log[] = static::buildLogContext($e, $attempt, $maxRetries, $trxLabel);
 
                     if ($attempt >= $maxRetries) {
+                        // exhausted retries — throw after logging below in finally
                         $throwable = $e;
                     } else {
-                        // Exponential backoff with jitter (minimal change but more robust)
+                        // Exponential backoff with jitter
                         $delay = static::backoffDelay($retryDelay, $attempt);
                         sleep($delay);
-                        continue; // retry next loop
+                        continue; // retry
                     }
                 } else {
-                    // Non-deadlock exception: propagate
+                    // Non-deadlock: DO NOT log, just rethrow
                     $throwable = $e;
                 }
             } finally {
                 if (is_null($throwable) && !$exceptionCatched) {
-                    // Success on the first try; optionally log last attempt as warning
+                    // Success on first try, nothing to do.
+                    // If you want to warn when there WERE previous retries that succeeded, keep this block:
                     if (count($log) > 0) {
+                        // optional: downgrade to warning for eventual success after retries
                         generateLog($log[count($log) - 1], $logFileName, 'warning');
                     }
                 } elseif (!is_null($throwable)) {
-                    // Ensure non-deadlock exceptions are logged
-                    if (count($log) > 0) {
+                    // We only log when it is a DEADLOCK and retries are exhausted.
+                    if ($isDeadlock && count($log) > 0) {
                         generateLog($log[count($log) - 1], $logFileName);
-                    } else if (!$isDeadlock && $throwable instanceof QueryException) {
-                        // Log non-deadlock QueryException immediately
-                        $context = static::buildLogContext($throwable, $attempt, $maxRetries, $trxLabel);
-                        generateLog($context, $logFileName);
                     }
+
+                    // For NON-deadlock, nothing is logged — just throw.
                     throw $throwable;
                 }
             }
         }
 
-        // If we exit the loop without returning, throw a generic runtime exception
         throw new \RuntimeException('Transaction with retry exhausted after ' . $maxRetries . ' attempts.');
     }
 
     protected static function isDeadlockOrSerializationError(QueryException $e): bool
     {
         // MySQL deadlock: driver error 1213; lock wait timeout: 1205 (often not retryable); SQLSTATE 40001 serialization failure
-        $sqlState = $e->getCode(); // In Laravel, getCode often returns SQLSTATE (e.g., '40001')
+        $sqlState  = $e->getCode(); // In Laravel, getCode often returns SQLSTATE (e.g., '40001')
         $driverErr = is_array($e->errorInfo ?? null) && isset($e->errorInfo[1]) ? $e->errorInfo[1] : null;
 
         return ($sqlState === '40001')
             || ($driverErr === 1213)
             || ($sqlState === 1213) // in case driver bubbles numeric
-            ;
+        ;
     }
 
     protected static function buildLogContext(QueryException $e, int $attempt, int $maxRetries, string $trxLabel): array
     {
         // Extract sql & bindings safely
-        $sql = method_exists($e, 'getSql') ? $e->getSql() : null;
+        $sql      = method_exists($e, 'getSql') ? $e->getSql() : null;
         $bindings = method_exists($e, 'getBindings') ? $e->getBindings() : [];
 
-        // Try to read connection name
-        $connectionName = null;
-        try {
-            $connection = DB::connection();
-            $connectionName = $connection?->getName();
-        } catch (Throwable) {
-            // ignore
+        $connectionName = $e->getConnectionName();
+        $conn           = DB::connection($connectionName);
+
+        // if laravel version <= 11.x then getRawSql() is not available and we will do it manually
+        $rawSql = method_exists($e, 'getRawSql') ? $e->getRawSql() : null;
+        if (is_null($rawSql) && !is_null($sql) && !empty($bindings)) {
+            $rawSql = $conn->getQueryGrammar()->substituteBindingsIntoRawSql($sql, $bindings);
         }
 
         $requestData = [
-            'url' => null,
+            'url'    => null,
             'method' => null,
-            'token' => null,
+            'token'  => null,
             'userId' => null,
         ];
 
         try {
             if (function_exists('request') && app()->bound('request')) {
-                $req = request();
-                $requestData['url'] = method_exists($req, 'getUri') ? $req->getUri() : null;
+                $req                   = request();
+                $requestData['url']    = method_exists($req, 'getUri') ? $req->getUri() : null;
                 $requestData['method'] = method_exists($req, 'getMethod') ? $req->getMethod() : null;
                 if (method_exists($req, 'header')) {
-                    $auth = $req->header('authorization');
+                    $auth                         = $req->header('authorization');
                     $requestData['authHeaderLen'] = $auth ? strlen($auth) : null;
                 }
                 $requestData['userId'] = method_exists($req, 'user') && $req->user() ? ($req->user()->id ?? null) : null;
@@ -133,16 +138,13 @@ class DBTransactionRetryHelper
         }
 
         return array_merge($requestData, [
-            'attempt' => $attempt,
+            'attempt'    => $attempt,
             'maxRetries' => $maxRetries,
-            'trxLabel' => $trxLabel,
-            'Exception' => get_class($e),
-            'message' => $e->getMessage(),
-            'sql' => $sql,
-            'bindings' => static::stringifyBindings($bindings),
-            'errorInfo' => $e->errorInfo,
+            'trxLabel'   => $trxLabel,
+            'errorInfo'  => $e->errorInfo,
+            'rawSql'     => $rawSql,
             'connection' => $connectionName,
-            'trace' => static::safeTrace(),
+            'trace'      => getDebugBacktraceArray(),
         ]);
     }
 
@@ -152,55 +154,11 @@ class DBTransactionRetryHelper
     protected static function backoffDelay(int $baseDelay, int $attempt): int
     {
         // Simple exponential backoff with jitter: baseDelay * 2^(attempt-1) +/- 25%
-        $delay = max(1, (int)round($baseDelay * pow(2, max(0, $attempt - 1))));
+        $delay  = max(1, (int)round($baseDelay * pow(2, max(0, $attempt - 1))));
         $jitter = max(0, (int)round($delay * 0.25));
-        $min = max(1, $delay - $jitter);
-        $max = $delay + $jitter;
+        $min    = max(1, $delay - $jitter);
+        $max    = $delay + $jitter;
+
         return random_int($min, $max);
-    }
-
-    protected static function stringifyBindings(array $bindings): array
-    {
-        return array_map(function ($b) {
-            if ($b instanceof \DateTimeInterface) {
-                return $b->format('Y-m-d H:i:s.u');
-            }
-            if (is_object($b)) {
-                return '[object ' . get_class($b) . ']';
-            }
-            if (is_resource($b)) {
-                return '[resource]';
-            }
-            if (is_string($b)) {
-                // Trim very long strings to avoid log bloat
-                return mb_strlen($b) > 500 ? (mb_substr($b, 0, 500) . '…[+trimmed]') : $b;
-            }
-            if (is_array($b)) {
-                // Compact arrays
-                $json = @json_encode($b, JSON_UNESCAPED_UNICODE);
-
-                return $json !== false
-                    ? (mb_strlen($json) > 500 ? (mb_substr($json, 0, 500) . '…[+trimmed]') : $json)
-                    : '[array]';
-            }
-
-            return $b;
-        }, $bindings);
-    }
-
-    protected static function safeTrace(): array
-    {
-        try {
-            return collect(debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 15))
-                ->map(fn($f) => [
-                    'file' => $f['file'] ?? null,
-                    'line' => $f['line'] ?? null,
-                    'function' => $f['function'] ?? null,
-                    'class' => $f['class'] ?? null,
-                    'type' => $f['type'] ?? null,
-                ])->all();
-        } catch (Throwable) {
-            return [];
-        }
     }
 }

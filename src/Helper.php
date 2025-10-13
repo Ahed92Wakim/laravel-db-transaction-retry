@@ -2,19 +2,52 @@
 
 use Illuminate\Support\Facades\Log;
 
-if (!function_exists('getDebugBacktraceArray')) {
-    function getDebugBacktraceArray(): array
+if (! function_exists('getDebugBacktraceArray')) {
+    function getDebugBacktraceArray(int $option = DEBUG_BACKTRACE_IGNORE_ARGS, int $limit = 15): array
     {
-        $steps = [];
-        foreach (debug_backtrace() as $step) {
-            $steps[] = [
-                'file' => $step['file'] ?? '',
-                'class' => $step['class'] ?? '',
-                'function' => $step['function'] ?? '',
-                'line' => $step['line'] ?? '',
-            ];
+        try {
+            return collect(debug_backtrace($option, $limit))
+                ->map(fn ($f) => [
+                    'file'     => $f['file']     ?? null,
+                    'line'     => $f['line']     ?? null,
+                    'function' => $f['function'] ?? null,
+                    'class'    => $f['class']    ?? null,
+                    'type'     => $f['type']     ?? null,
+                ])->all();
+        } catch (Throwable) {
+            return [];
         }
-        return $steps;
+    }
+}
+
+if (! function_exists('stringifyBindings')) {
+    function stringifyBindings(array $bindings): array
+    {
+        return array_map(function ($b) {
+            if ($b instanceof \DateTimeInterface) {
+                return $b->format('Y-m-d H:i:s.u');
+            }
+            if (is_object($b)) {
+                return '[object '.get_class($b).']';
+            }
+            if (is_resource($b)) {
+                return '[resource]';
+            }
+            if (is_string($b)) {
+                // Trim very long strings to avoid log bloat
+                return mb_strlen($b) > 500 ? (mb_substr($b, 0, 500).'…[+trimmed]') : $b;
+            }
+            if (is_array($b)) {
+                // Compact arrays
+                $json = @json_encode($b, JSON_UNESCAPED_UNICODE);
+
+                return $json !== false
+                    ? (mb_strlen($json) > 500 ? (mb_substr($json, 0, 500).'…[+trimmed]') : $json)
+                    : '[array]';
+            }
+
+            return $b;
+        }, $bindings);
     }
 }
 
@@ -26,16 +59,16 @@ if (!function_exists('generateLog')) {
         if (empty($logFileName)) {
             $logFilePath = storage_path('logs/' . $date . '/general.log');
         } else {
-            $logFilePath = storage_path("logs/" . $date . "/{$logFileName}.log");
+            $logFilePath = storage_path('logs/' . $date . "/{$logFileName}.log");
         }
         $log = Log::build([
             'driver' => 'single',
-            'path' => $logFilePath,
+            'path'   => $logFilePath,
         ]);
-        $payload = is_array($var) ? $var : ['message' => (string)$var];
-        $attempts = $var['attempt'] ?? 0;
+        $payload    = is_array($var) ? $var : ['message' => (string)$var];
+        $attempts   = $var['attempt']    ?? 0;
         $maxRetries = $var['maxRetries'] ?? 0;
-        $trxLabel = $var['trxLabel'] ?? '';
+        $trxLabel   = $var['trxLabel']   ?? '';
 
         if ($logType === 'warning') {
             // Transaction succeeded after retries
