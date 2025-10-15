@@ -43,7 +43,7 @@
         "fix": "php-cs-fixer fix --config=.php-cs-fixer.php",
         "fix:dry": "php-cs-fixer fix --config=.php-cs-fixer.php --dry-run --diff",
         "fix:ci": "php-cs-fixer fix --config=.php-cs-fixer.php --using-cache=no --dry-run",
-        "test": "vendor/bin/phpunit --configuration phpunit.xml --colors=always"
+        "test": "vendor/bin/pest --configuration phpunit.xml --colors=always"
     },
     "config": {
         "allow-plugins": {

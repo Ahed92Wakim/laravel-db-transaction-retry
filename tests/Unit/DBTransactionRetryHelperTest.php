@@ -12,7 +12,7 @@ namespace Tests;
 use Illuminate\Database\QueryException;
 use MysqlDeadlocks\RetryHelper\DBTransactionRetryHelper;
 
-beforeEach(function () {
+beforeEach(function (): void {
     $this->database   = new FakeDatabaseManager();
     $this->logManager = new FakeLogManager();
 
@@ -22,7 +22,7 @@ beforeEach(function () {
     SleepSpy::reset();
 });
 
-test('returns callback result without retries', function () {
+test('returns callback result without retries', function (): void {
     $result = DBTransactionRetryHelper::transactionWithRetry(fn () => 'done');
 
     expect($result)->toBe('done');
@@ -31,7 +31,7 @@ test('returns callback result without retries', function () {
     expect(SleepSpy::$delays)->toBe([]);
 });
 
-test('retries on deadlock and logs warning', function () {
+test('retries on deadlock and logs warning', function (): void {
     $attempts = 0;
 
     $result = DBTransactionRetryHelper::transactionWithRetry(function () use (&$attempts) {
@@ -59,7 +59,7 @@ test('retries on deadlock and logs warning', function () {
     expect($record['context']['trxLabel'])->toBe('orders');
 });
 
-test('throws after max retries and logs error', function () {
+test('throws after max retries and logs error', function (): void {
     try {
         DBTransactionRetryHelper::transactionWithRetry(function (): void {
             throw makeQueryException(1213);
@@ -86,7 +86,7 @@ test('throws after max retries and logs error', function () {
     expect($record['context']['trxLabel'])->toBe('payments');
 });
 
-test('does not retry for non deadlock query exception', function () {
+test('does not retry for non deadlock query exception', function (): void {
     try {
         DBTransactionRetryHelper::transactionWithRetry(function (): void {
             throw makeQueryException(999, 0);
