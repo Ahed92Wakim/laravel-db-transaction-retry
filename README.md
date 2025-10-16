@@ -1,12 +1,17 @@
 # Laravel MySQL Deadlock Retry
 
-![CI](https://github.com/Ahed92Wakim/laravel-mysql-deadlock-retry/actions/workflows/ci.yml/badge.svg?event=pull_request)
-![PHP](https://img.shields.io/badge/php-8.2-blue)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Tests](https://github.com/Ahed92Wakim/laravel-mysql-deadlock-retry/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Ahed92Wakim/laravel-mysql-deadlock-retry/actions/workflows/ci.yml)
+[![Packagist Version](https://img.shields.io/packagist/v/ahed92wakim/laravel-mysql-deadlock-retry.svg)](https://packagist.org/packages/ahed92wakim/laravel-mysql-deadlock-retry)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Laravel](https://img.shields.io/badge/Laravel-%5E11-red.svg)](#)
+[![PHP](https://img.shields.io/badge/PHP-%5E8.2-blue.svg)](#)
+[![Code Style](https://img.shields.io/badge/style-PHP%20CS%20Fixer-informational.svg)](#)
+
 
 Resilient database transactions for Laravel applications that need to gracefully handle MySQL deadlocks and serialization failures. This helper wraps `DB::transaction()` with targeted retries, structured logging, and exponential backoff so you can keep your business logic simple while surviving transient contention.
 
 ## Highlights
+
 - Retries only known transient failure scenarios (MySQL driver error `1213` and SQLSTATE `40001`), leaving all other exceptions untouched.
 - Exponential backoff with jitter between attempts to reduce stampedes under load.
 - Structured logs with request metadata, SQL, bindings, connection information, and stack traces written to dated files under `storage/logs/{Y-m-d}`.
@@ -45,18 +50,19 @@ $order = Retry::transactionWithRetry(
 
 ### Parameters
 
-| Parameter | Default | Description |
-| --- | --- | --- |
-| `maxRetries` | `3` | Total number of attempts (initial try + retries). |
-| `retryDelay` | `2` | Base delay (seconds). Actual wait uses exponential backoff with ±25% jitter. |
-| `logFileName` | `database/mysql-deadlocks` | Written to `storage/logs/{Y-m-d}/{logFileName}.log`. Can point to subdirectories. |
-| `trxLabel` | `''` | Optional label injected into log titles and stored in the service container as `tx.label` for downstream consumers. |
+| Parameter     | Default                    | Description                                                                                                         |
+| ------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `maxRetries`  | `3`                        | Total number of attempts (initial try + retries).                                                                   |
+| `retryDelay`  | `2`                        | Base delay (seconds). Actual wait uses exponential backoff with ±25% jitter.                                        |
+| `logFileName` | `database/mysql-deadlocks` | Written to `storage/logs/{Y-m-d}/{logFileName}.log`. Can point to subdirectories.                                   |
+| `trxLabel`    | `''`                       | Optional label injected into log titles and stored in the service container as `tx.label` for downstream consumers. |
 
 Call the helper anywhere you would normally open a transaction—controllers, jobs, console commands, or domain services.
 
 ## Retry Conditions
 
 Retries are attempted only when the caught exception is an `Illuminate\Database\QueryException` that matches one of:
+
 - SQLSTATE `40001` (serialization failure).
 - MySQL driver error `1213` (deadlock), whether reported via SQLSTATE or the driver error code.
 
@@ -67,10 +73,12 @@ If no attempt succeeds and all retries are exhausted, the last `QueryException` 
 ## Logging Behaviour
 
 Logs are written using a dedicated single-file channel per day:
+
 - Success after retries → a warning entry titled `"[trxLabel] [MYSQL DEADLOCK RETRY - SUCCESS] After (Attempts: x/y) - Warning"`.
 - Failure after exhausting retries → an error entry titled `"[trxLabel] [MYSQL DEADLOCK RETRY - FAILED] After (Attempts: x/y) - Error"`.
 
 Each log entry includes:
+
 - Attempt count, maximum retries, and transaction label.
 - Connection name, SQL, resolved raw SQL (when bindings are available), and PDO error info.
 - A compacted stack trace and sanitized bindings.

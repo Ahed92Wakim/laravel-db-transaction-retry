@@ -36,12 +36,18 @@
     ],
     "require-dev": {
         "friendsofphp/php-cs-fixer": "^3.88",
-        "phpunit/phpunit": "^11.5"
+        "phpunit/phpunit": "^11.5",
+        "pestphp/pest": "^3.8"
     },
     "scripts": {
         "fix": "php-cs-fixer fix --config=.php-cs-fixer.php",
         "fix:dry": "php-cs-fixer fix --config=.php-cs-fixer.php --dry-run --diff",
         "fix:ci": "php-cs-fixer fix --config=.php-cs-fixer.php --using-cache=no --dry-run",
-        "test": "vendor/bin/phpunit --configuration phpunit.xml --colors=always"
+        "test": "vendor/bin/pest --configuration phpunit.xml --colors=always"
+    },
+    "config": {
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
     }
 }
