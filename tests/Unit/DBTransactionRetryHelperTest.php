@@ -10,7 +10,7 @@ function sleep(int $seconds): void
 namespace Tests;
 
 use Illuminate\Database\QueryException;
-use MysqlDeadlocks\RetryHelper\DBTransactionRetryHelper;
+use MysqlDeadlocks\RetryHelper\Services\DeadlockTransactionRetrier;
 
 beforeEach(function (): void {
     $this->database   = new FakeDatabaseManager();
@@ -23,7 +23,7 @@ beforeEach(function (): void {
 });
 
 test('returns callback result without retries', function (): void {
-    $result = DBTransactionRetryHelper::transactionWithRetry(fn () => 'done');
+    $result = DeadlockTransactionRetrier::runWithRetry(fn () => 'done');
 
     expect($result)->toBe('done');
     expect($this->database->transactionCalls)->toBe(1);
@@ -34,7 +34,7 @@ test('returns callback result without retries', function (): void {
 test('retries on deadlock and logs warning', function (): void {
     $attempts = 0;
 
-    $result = DBTransactionRetryHelper::transactionWithRetry(function () use (&$attempts) {
+    $result = DeadlockTransactionRetrier::runWithRetry(function () use (&$attempts) {
         $attempts++;
 
         if ($attempts === 1) {
@@ -61,7 +61,7 @@ test('retries on deadlock and logs warning', function (): void {
 
 test('throws after max retries and logs error', function (): void {
     try {
-        DBTransactionRetryHelper::transactionWithRetry(function (): void {
+        DeadlockTransactionRetrier::runWithRetry(function (): void {
             throw makeQueryException(1213);
         }, maxRetries: 3, retryDelay: 1, trxLabel: 'payments');
 
@@ -88,7 +88,7 @@ test('throws after max retries and logs error', function (): void {
 
 test('does not retry for non deadlock query exception', function (): void {
     try {
-        DBTransactionRetryHelper::transactionWithRetry(function (): void {
+        DeadlockTransactionRetrier::runWithRetry(function (): void {
             throw makeQueryException(999, 0);
         }, maxRetries: 3, retryDelay: 1);
 

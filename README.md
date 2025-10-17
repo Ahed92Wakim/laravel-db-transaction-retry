@@ -35,14 +35,14 @@ Resilient database transactions for Laravel applications that need to gracefully
 composer require ahed92wakim/laravel-mysql-deadlock-retry
 ```
 
-The package ships with a service provider that is auto-discovered. No additional setup is needed, and the helper functions in `src/Helper.php` are automatically loaded.
+The package ships with the `DatabaseRetryServiceProvider`, which Laravel auto-discovers. No additional setup is needed.
 
 ## Usage
 
 ```php
-use MysqlDeadlocks\RetryHelper\DBTransactionRetryHelper as Retry;
+use MysqlDeadlocks\RetryHelper\Services\DeadlockTransactionRetrier as Retry;
 
-$order = Retry::transactionWithRetry(
+$order = Retry::runWithRetry(
     function () use ($payload) {
         $order = Order::create($payload);
         $order->logAuditTrail();
@@ -56,7 +56,7 @@ $order = Retry::transactionWithRetry(
 );
 ```
 
-`transactionWithRetry()` returns the value produced by your callback, just like `DB::transaction()`. If every attempt fails, the last `QueryException` is re-thrown so your calling code can continue its normal error handling.
+`runWithRetry()` returns the value produced by your callback, just like `DB::transaction()`. If every attempt fails, the last `QueryException` is re-thrown so your calling code can continue its normal error handling.  
 
 ### Parameters
 
@@ -95,6 +95,16 @@ Each log entry includes:
 - Request URL, method, authorization header length, and authenticated user ID when the request helper is bound.
 
 Set `logFileName` to segment logs by feature or workload (e.g., `logFileName: 'database/queues/payments'`).
+
+## Helper Utilities
+
+The package exposes dedicated support classes you can reuse in your own instrumentation:
+
+- `MysqlDeadlocks\RetryHelper\Support\DeadlockLogWriter` writes structured entries using the same format as the retrier.
+- `MysqlDeadlocks\RetryHelper\Support\TraceFormatter` converts debug backtraces into log-friendly arrays.
+- `MysqlDeadlocks\RetryHelper\Support\BindingStringifier` sanitises query bindings before logging.
+
+For testing scenarios, the retrier looks for a namespaced `MysqlDeadlocks\RetryHelper\sleep()` function before falling back to PHP's global `sleep()`, making it easy to assert backoff intervals without introducing delays.
 
 ## Testing the Package
 

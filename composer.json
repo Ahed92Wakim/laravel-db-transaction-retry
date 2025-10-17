@@ -11,10 +11,7 @@
     "autoload": {
         "psr-4": {
             "MysqlDeadlocks\\RetryHelper\\": "src/"
-        },
-        "files": [
-            "src/Helper.php"
-        ]
+        }
     },
     "autoload-dev": {
         "psr-4": {
@@ -24,7 +21,7 @@
     "extra": {
         "laravel": {
             "providers": [
-                "MysqlDeadlocks\\RetryHelper\\RetryServiceProvider"
+                "MysqlDeadlocks\\RetryHelper\\Providers\\DatabaseRetryServiceProvider"
             ]
         }
     },
