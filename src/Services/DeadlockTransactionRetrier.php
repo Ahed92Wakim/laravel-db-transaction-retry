@@ -17,20 +17,29 @@ class DeadlockTransactionRetrier
      * Run the supplied callback inside a transaction with retry logic for MySQL deadlocks and serialization errors.
      *
      * @param Closure $callback The transaction logic to execute.
-     * @param int $maxRetries Number of times to retry on deadlock.
-     * @param int $retryDelay Delay between retries in seconds (base for backoff).
-     * @param string $logFileName The log file name.
+     * @param int|null $maxRetries Number of times to retry on deadlock. Falls back to configuration.
+     * @param int|null $retryDelay Delay between retries in seconds (base for backoff). Falls back to configuration.
+     * @param string|null $logFileName The log file name. Falls back to configuration.
      * @param string $trxLabel The transaction label.
      * @throws RandomException
      * @throws Throwable
      */
     public static function runWithRetry(
         Closure $callback,
-        int $maxRetries = 3,
-        int $retryDelay = 2,
-        string $logFileName = 'database/mysql-deadlocks',
+        ?int $maxRetries = null,
+        ?int $retryDelay = null,
+        ?string $logFileName = null,
         string $trxLabel = ''
     ): mixed {
+        $config = function_exists('config') ? config('mysql-deadlock-retry', []) : [];
+
+        $maxRetries  ??= (int) ($config['max_retries'] ?? 3);
+        $retryDelay  ??= (int) ($config['retry_delay'] ?? 2);
+        $logFileName ??= (string) ($config['log_file_name'] ?? 'database/mysql-deadlocks');
+
+        $maxRetries = max(1, $maxRetries);
+        $retryDelay = max(1, $retryDelay);
+
         $trxLabel = $trxLabel ?? '';
 
         $attempt    = 0;
@@ -79,19 +88,6 @@ class DeadlockTransactionRetrier
         }
 
         throw new RuntimeException('Transaction with retry exhausted after ' . $maxRetries . ' attempts.');
-    }
-
-    /**
-     * @deprecated Use runWithRetry() instead.
-     */
-    public static function transactionWithRetry(
-        Closure $callback,
-        int $maxRetries = 3,
-        int $retryDelay = 2,
-        string $logFileName = 'database/mysql-deadlocks',
-        string $trxLabel = ''
-    ): mixed {
-        return static::runWithRetry($callback, $maxRetries, $retryDelay, $logFileName, $trxLabel);
     }
 
     protected static function shouldRetry(QueryException $e): bool
@@ -180,16 +176,24 @@ class DeadlockTransactionRetrier
         bool $exceptionCaught,
         bool $shouldRetryError
     ): void {
+        $levels = static::configuredLogLevels();
+
         if (is_null($throwable) && ! $exceptionCaught) {
             if (count($logEntries) > 0) {
-                DeadlockLogWriter::write($logEntries[count($logEntries) - 1], $logFileName, 'warning');
+                $entry                = $logEntries[count($logEntries) - 1];
+                $entry['retryStatus'] = 'success';
+
+                DeadlockLogWriter::write($entry, $logFileName, $levels['success']);
             }
 
             return;
         }
 
         if (! is_null($throwable) && $shouldRetryError && count($logEntries) > 0) {
-            DeadlockLogWriter::write($logEntries[count($logEntries) - 1], $logFileName);
+            $entry                = $logEntries[count($logEntries) - 1];
+            $entry['retryStatus'] = 'failure';
+
+            DeadlockLogWriter::write($entry, $logFileName, $levels['failure']);
         }
 
         // Non-retryable errors rethrow outside this helper; only log when retries are exhausted.
@@ -206,5 +210,35 @@ class DeadlockTransactionRetrier
         }
 
         sleep($seconds);
+    }
+
+    protected static function configuredLogLevels(): array
+    {
+        $defaults = [
+            'success' => 'warning',
+            'failure' => 'error',
+        ];
+
+        if (! function_exists('config')) {
+            return $defaults;
+        }
+
+        $levels = config('mysql-deadlock-retry.logging.levels', []);
+
+        if (! is_array($levels)) {
+            return $defaults;
+        }
+
+        return [
+            'success' => static::normaliseLogLevel($levels['success'] ?? null, $defaults['success']),
+            'failure' => static::normaliseLogLevel($levels['failure'] ?? null, $defaults['failure']),
+        ];
+    }
+
+    protected static function normaliseLogLevel(?string $level, string $fallback): string
+    {
+        $candidate = is_string($level) ? strtolower(trim($level)) : null;
+
+        return $candidate !== '' ? $candidate : $fallback;
     }
 }

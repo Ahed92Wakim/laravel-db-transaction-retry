@@ -8,7 +8,10 @@ class DatabaseRetryServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        // Register bindings or aliases related to retry helpers here if needed.
+        $this->mergeConfigFrom(
+            __DIR__ . '/../../config/mysql-deadlock-retry.php',
+            'mysql-deadlock-retry'
+        );
     }
 
     /**
@@ -16,6 +19,14 @@ class DatabaseRetryServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // Hook for publishing configuration or adding macros in future versions.
+        if ($this->app->runningInConsole()) {
+            $configPath = function_exists('config_path')
+                ? config_path('mysql-deadlock-retry.php')
+                : $this->app->basePath('config/mysql-deadlock-retry.php');
+
+            $this->publishes([
+                __DIR__ . '/../../config/mysql-deadlock-retry.php' => $configPath,
+            ], 'mysql-deadlock-retry-config');
+        }
     }
 }

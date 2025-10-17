@@ -11,6 +11,7 @@ namespace Tests;
 
 use Illuminate\Database\QueryException;
 use MysqlDeadlocks\RetryHelper\Services\DeadlockTransactionRetrier;
+use Psr\Log\AbstractLogger;
 
 beforeEach(function (): void {
     $this->database   = new FakeDatabaseManager();
@@ -178,26 +179,17 @@ final class FakeLogManager
     }
 }
 
-final class FakeLogger
+final class FakeLogger extends AbstractLogger
 {
     public function __construct(private FakeLogManager $manager)
     {
     }
 
-    public function warning(string $message, array $context = []): void
+    public function log($level, $message, array $context = []): void
     {
         $this->manager->records[] = [
-            'level'   => 'warning',
-            'message' => $message,
-            'context' => $context,
-        ];
-    }
-
-    public function error(string $message, array $context = []): void
-    {
-        $this->manager->records[] = [
-            'level'   => 'error',
-            'message' => $message,
+            'level'   => strtolower((string) $level),
+            'message' => (string) $message,
             'context' => $context,
         ];
     }
