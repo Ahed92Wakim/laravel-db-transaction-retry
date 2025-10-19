@@ -26,8 +26,14 @@ class DBTransactionRetryHelper
         if (is_null($trxLabel)) {
             $trxLabel = '';
         }
-        $attempt = 0;
-        $log     = [];
+
+        if ($trxLabel !== '') {
+            app()->instance('tx.label', $trxLabel);
+        }
+
+        $attempt               = 0;
+        $lastDeadlockException = null;
+        $lastDeadlockAttempt   = 0;
 
         while ($attempt < $maxRetries) {
             // reset per-attempt flags to avoid stale values
@@ -37,7 +43,6 @@ class DBTransactionRetryHelper
 
             try {
                 // Execute the transaction
-                $trxLabel === '' || app()->instance('tx.label', $trxLabel);
                 $result = DB::transaction($callback);
 
                 return $result;
@@ -50,7 +55,8 @@ class DBTransactionRetryHelper
 
                 if ($isDeadlock) {
                     $attempt++;
-                    $log[] = static::buildLogContext($e, $attempt, $maxRetries, $trxLabel);
+                    $lastDeadlockException = $e;
+                    $lastDeadlockAttempt   = $attempt;
 
                     if ($attempt >= $maxRetries) {
                         // exhausted retries — throw after logging below in finally
@@ -63,20 +69,31 @@ class DBTransactionRetryHelper
                     }
                 } else {
                     // Non-deadlock: DO NOT log, just rethrow
-                    $throwable = $e;
+                    $lastDeadlockException = null;
+                    $lastDeadlockAttempt   = 0;
+                    $throwable             = $e;
                 }
             } finally {
                 if (is_null($throwable) && !$exceptionCatched) {
                     // Success on first try, nothing to do.
                     // If you want to warn when there WERE previous retries that succeeded, keep this block:
-                    if (count($log) > 0) {
+                    if ($lastDeadlockException !== null) {
                         // optional: downgrade to warning for eventual success after retries
-                        generateLog($log[count($log) - 1], $logFileName, 'warning');
+                        generateLog(
+                            static::buildLogContext($lastDeadlockException, $lastDeadlockAttempt, $maxRetries, $trxLabel),
+                            $logFileName,
+                            'warning'
+                        );
+                        $lastDeadlockException = null;
+                        $lastDeadlockAttempt   = 0;
                     }
                 } elseif (!is_null($throwable)) {
                     // We only log when it is a DEADLOCK and retries are exhausted.
-                    if ($isDeadlock && count($log) > 0) {
-                        generateLog($log[count($log) - 1], $logFileName);
+                    if ($isDeadlock && $lastDeadlockException !== null) {
+                        generateLog(
+                            static::buildLogContext($lastDeadlockException, $lastDeadlockAttempt, $maxRetries, $trxLabel),
+                            $logFileName
+                        );
                     }
 
                     // For NON-deadlock, nothing is logged — just throw.
@@ -107,15 +124,18 @@ class DBTransactionRetryHelper
         $bindings = method_exists($e, 'getBindings') ? $e->getBindings() : [];
 
         $connectionName = $e->getConnectionName();
-        $conn           = DB::connection($connectionName);
-
         // if laravel version <= 11.x then getRawSql() is not available and we will do it manually
         $rawSql = method_exists($e, 'getRawSql') ? $e->getRawSql() : null;
-        if (is_null($rawSql) && !is_null($sql) && !empty($bindings)) {
-            $rawSql = $conn->getQueryGrammar()->substituteBindingsIntoRawSql($sql, $bindings);
+        if ($rawSql === null && $sql !== null && $bindings !== []) {
+            static $grammarCache = [];
+
+            $key     = $connectionName ?? '__default__';
+            $grammar = $grammarCache[$key] ??= DB::connection($connectionName)->getQueryGrammar();
+
+            $rawSql = $grammar->substituteBindingsIntoRawSql($sql, $bindings);
         }
 
-        $requestData = [
+        $context = [
             'url'    => null,
             'method' => null,
             'token'  => null,
@@ -124,28 +144,28 @@ class DBTransactionRetryHelper
 
         try {
             if (function_exists('request') && app()->bound('request')) {
-                $req                   = request();
-                $requestData['url']    = method_exists($req, 'getUri') ? $req->getUri() : null;
-                $requestData['method'] = method_exists($req, 'getMethod') ? $req->getMethod() : null;
+                $req               = request();
+                $context['url']    = method_exists($req, 'getUri') ? $req->getUri() : null;
+                $context['method'] = method_exists($req, 'getMethod') ? $req->getMethod() : null;
                 if (method_exists($req, 'header')) {
-                    $auth                         = $req->header('authorization');
-                    $requestData['authHeaderLen'] = $auth ? strlen($auth) : null;
+                    $auth                     = $req->header('authorization');
+                    $context['authHeaderLen'] = $auth ? strlen($auth) : null;
                 }
-                $requestData['userId'] = method_exists($req, 'user') && $req->user() ? ($req->user()->id ?? null) : null;
+                $context['userId'] = method_exists($req, 'user') && $req->user() ? ($req->user()->id ?? null) : null;
             }
         } catch (Throwable) {
             // ignore
         }
 
-        return array_merge($requestData, [
-            'attempt'    => $attempt,
-            'maxRetries' => $maxRetries,
-            'trxLabel'   => $trxLabel,
-            'errorInfo'  => $e->errorInfo,
-            'rawSql'     => $rawSql,
-            'connection' => $connectionName,
-            'trace'      => getDebugBacktraceArray(),
-        ]);
+        $context['attempt']    = $attempt;
+        $context['maxRetries'] = $maxRetries;
+        $context['trxLabel']   = $trxLabel;
+        $context['errorInfo']  = $e->errorInfo;
+        $context['rawSql']     = $rawSql;
+        $context['connection'] = $connectionName;
+        $context['trace']      = getDebugBacktraceArray();
+
+        return $context;
     }
 
     /**
