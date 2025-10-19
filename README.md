@@ -1,11 +1,21 @@
-# Laravel MySQL Deadlock Retry
+<p align="center">
+  <img src="art/logo.svg" width="250" alt="MySQL Deadlock Retry Helper">
+</p>
 
-[![Tests](https://github.com/Ahed92Wakim/laravel-mysql-deadlock-retry/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Ahed92Wakim/laravel-mysql-deadlock-retry/actions/workflows/ci.yml)
-[![Packagist Version](https://img.shields.io/packagist/v/ahed92wakim/laravel-mysql-deadlock-retry.svg)](https://packagist.org/packages/ahed92wakim/laravel-mysql-deadlock-retry)
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Laravel](https://img.shields.io/badge/Laravel-%5E11-red.svg)](#)
-[![PHP](https://img.shields.io/badge/PHP-%5E8.2-blue.svg)](#)
-[![Code Style](https://img.shields.io/badge/style-PHP%20CS%20Fixer-informational.svg)](#)
+<p align="center">
+  <a href="https://github.com/Ahed92Wakim/laravel-mysql-deadlock-retry/actions/workflows/ci.yml">
+    <img src="https://github.com/Ahed92Wakim/laravel-mysql-deadlock-retry/actions/workflows/ci.yml/badge.svg?branch=main" alt="Tests">
+  </a>
+  <a href="https://packagist.org/packages/ahed92wakim/laravel-mysql-deadlock-retry">
+    <img src="https://img.shields.io/packagist/v/ahed92wakim/laravel-mysql-deadlock-retry.svg" alt="Packagist Version">
+  </a>
+  <a href="LICENSE">
+    <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT License">
+  </a>
+  <img src="https://img.shields.io/badge/Laravel-%5E11-red.svg" alt="Laravel ^11">
+  <img src="https://img.shields.io/badge/PHP-%5E8.2-blue.svg" alt="PHP ^8.2">
+  <img src="https://img.shields.io/badge/style-PHP%20CS%20Fixer-informational.svg" alt="PHP CS Fixer">
+</p>
 
 
 Resilient database transactions for Laravel applications that need to gracefully handle MySQL deadlocks and serialization failures. This helper wraps `DB::transaction()` with targeted retries, structured logging, and exponential backoff so you can keep your business logic simple while surviving transient contention.
