@@ -110,6 +110,74 @@ test('does not retry for non deadlock query exception', function (): void {
     expect(SleepSpy::$delays)->toBe([]);
 });
 
+test('retries on lock wait timeout and applies configured session timeout', function (): void {
+    Container::getInstance()->make('config')->set(
+        'database-transaction-retry.lock_wait_timeout_seconds',
+        7
+    );
+
+    Container::getInstance()->make('config')->set(
+        'database-transaction-retry.retryable_exceptions.driver_error_codes',
+        [1205]
+    );
+
+    $attempts = 0;
+
+    $result = TransactionRetrier::runWithRetry(function () use (&$attempts) {
+        $attempts++;
+
+        if ($attempts === 1) {
+            throw makeQueryException(1205, 'HY000');
+        }
+
+        return 'done';
+    }, maxRetries: 3, retryDelay: 1, trxLabel: 'lock-wait');
+
+    expect($result)->toBe('done');
+    expect($this->database->transactionCalls)->toBe(2);
+    expect(SleepSpy::$delays)->toHaveCount(1);
+    expect($this->database->statementCalls)->toHaveCount(2);
+
+    [$statement, $bindings] = $this->database->statementCalls[0];
+    expect($statement)->toBe('SET SESSION innodb_lock_wait_timeout = ?');
+    expect($bindings)->toBe([7]);
+
+    $record = $this->logManager->records[0];
+    expect($record['context']['driverCode'])->toBe(1205);
+    expect($record['context']['sqlState'])->toBe('HY000');
+    expect($record['message'])->toContain('Driver 1205');
+    expect($record['message'])->toContain('SQLSTATE HY000');
+});
+
+test('does not change session timeout when lock wait retry disabled', function (): void {
+    Container::getInstance()->make('config')->set(
+        'database-transaction-retry.lock_wait_timeout_seconds',
+        9
+    );
+
+    Container::getInstance()->make('config')->set(
+        'database-transaction-retry.retryable_exceptions.driver_error_codes',
+        [1213]
+    );
+
+    Container::getInstance()->make('config')->set(
+        'database-transaction-retry.retryable_exceptions.sql_states',
+        []
+    );
+
+    try {
+        TransactionRetrier::runWithRetry(function (): void {
+            throw makeQueryException(1205, 'HY000');
+        }, maxRetries: 2, retryDelay: 1);
+
+        $this->fail('Expected QueryException was not thrown.');
+    } catch (QueryException $th) {
+        expect($th->errorInfo[1])->toBe(1205);
+    }
+
+    expect($this->database->statementCalls)->toBe([]);
+});
+
 test('retries when driver code is configured', function (): void {
     Container::getInstance()->make('config')->set(
         'database-transaction-retry.retryable_exceptions.driver_error_codes',
@@ -167,10 +235,18 @@ test('retries when exception class is configured', function (): void {
     expect(array_key_exists('sqlState', $record['context']))->toBeFalse();
 });
 
-function makeQueryException(int $driverCode, int $sqlState = 40001): QueryException
+function makeQueryException(int $driverCode, string|int $sqlState = 40001): QueryException
 {
-    $sqlStateString = str_pad((string) $sqlState, 5, '0', STR_PAD_LEFT);
-    $pdo            = new \PDOException('SQLSTATE[' . $sqlStateString . ']: Driver error', $sqlState);
+    $sqlStateString = strtoupper((string) $sqlState);
+
+    if (strlen($sqlStateString) < 5) {
+        $sqlStateString = str_pad($sqlStateString, 5, '0', STR_PAD_LEFT);
+    }
+
+    $pdo = new \PDOException(
+        'SQLSTATE[' . $sqlStateString . ']: Driver error',
+        is_numeric($sqlState) ? (int) $sqlState : 0
+    );
     $pdo->errorInfo = [$sqlStateString, $driverCode, 'Driver error'];
 
     return new QueryException(
@@ -188,6 +264,8 @@ final class CustomRetryException extends \RuntimeException
 final class FakeDatabaseManager
 {
     public int $transactionCalls = 0;
+    /** @var list<array{0:string,1:array}> */
+    public array $statementCalls = [];
     private FakeConnection $connection;
 
     public function __construct(?FakeConnection $connection = null)
@@ -206,11 +284,25 @@ final class FakeDatabaseManager
     {
         return $this->connection;
     }
+
+    public function statement(string $query, array $bindings = []): bool
+    {
+        $this->statementCalls[] = [$query, $bindings];
+
+        return $this->connection()->statement($query, $bindings);
+    }
+
+    public function getConnection(): FakeConnection
+    {
+        return $this->connection;
+    }
 }
 
 final class FakeConnection
 {
     private FakeQueryGrammar $grammar;
+    /** @var list<array{0:string,1:array}> */
+    public array $statements = [];
 
     public function __construct(?FakeQueryGrammar $grammar = null)
     {
@@ -220,6 +312,13 @@ final class FakeConnection
     public function getQueryGrammar(): FakeQueryGrammar
     {
         return $this->grammar;
+    }
+
+    public function statement(string $query, array $bindings = []): bool
+    {
+        $this->statements[] = [$query, $bindings];
+
+        return true;
     }
 }
 

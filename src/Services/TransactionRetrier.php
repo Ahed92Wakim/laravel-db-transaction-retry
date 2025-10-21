@@ -50,6 +50,8 @@ class TransactionRetrier
             $shouldRetryError = false;
 
             try {
+                static::applyLockWaitTimeout($config);
+
                 // Expose the transaction label if the app wants to read it during the callback.
                 $trxLabel === '' || app()->instance('tx.label', $trxLabel);
 
@@ -295,5 +297,47 @@ class TransactionRetrier
         $candidate = is_string($level) ? strtolower(trim($level)) : null;
 
         return $candidate !== '' ? $candidate : $fallback;
+    }
+
+    protected static function applyLockWaitTimeout(array $config): void
+    {
+        $seconds = $config['lock_wait_timeout_seconds'] ?? null;
+
+        if (! static::isLockWaitRetryEnabled($config)) {
+            return;
+        }
+
+        if (is_null($seconds)) {
+            return;
+        }
+
+        if (is_string($seconds) && $seconds === '') {
+            return;
+        }
+
+        $seconds = (int) $seconds;
+
+        if ($seconds < 1) {
+            return;
+        }
+
+        try {
+            DB::statement('SET SESSION innodb_lock_wait_timeout = ?', [$seconds]);
+        } catch (Throwable) {
+            // Silently ignore when the underlying driver does not support this option.
+        }
+    }
+
+    protected static function isLockWaitRetryEnabled(array $config): bool
+    {
+        $retryable = is_array($config['retryable_exceptions'] ?? null)
+            ? $config['retryable_exceptions']
+            : [];
+
+        $driverCodes = is_array($retryable['driver_error_codes'] ?? null)
+            ? array_map(static fn ($code) => (int) $code, $retryable['driver_error_codes'])
+            : [];
+
+        return in_array(1205, $driverCodes, true);
     }
 }

@@ -16,6 +16,21 @@ return [
 
     'retry_delay' => (int) env('DB_TRANSACTION_RETRY_DELAY', 2),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Lock Wait Timeout
+    |--------------------------------------------------------------------------
+    |
+    | Optionally override the session-level lock wait timeout before executing
+    | the transaction. When set to a positive integer the helper issues:
+    | "SET SESSION innodb_lock_wait_timeout = {seconds}" on the active
+    | connection prior to each attempt. Set to null to leave the database
+    | default untouched.
+    |
+    */
+
+    'lock_wait_timeout_seconds' => env('DB_TRANSACTION_RETRY_LOCK_WAIT_TIMEOUT', 50),
+
     'log_file_name' => env('DB_TRANSACTION_RETRY_LOG_FILE', 'database/transaction-retries'),
 
     /*
@@ -33,8 +48,6 @@ return [
 
     'logging' => [
         'channel' => env('DB_TRANSACTION_RETRY_LOG_CHANNEL'),
-
-        'config' => null,
 
         'levels' => [
             'success' => env('DB_TRANSACTION_RETRY_LOG_SUCCESS_LEVEL', 'warning'),
@@ -60,6 +73,7 @@ return [
 
         'driver_error_codes' => [
             1213, // MySQL deadlock
+            //1205, // MySQL lock wait timeout
         ],
 
         'classes' => [],
