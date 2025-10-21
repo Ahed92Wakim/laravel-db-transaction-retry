@@ -35,14 +35,14 @@ Resilient database transactions for Laravel applications that need to gracefully
 composer require ahed92wakim/laravel-mysql-deadlock-retry
 ```
 
-The package ships with a service provider that is auto-discovered. No additional setup is needed, and the helper functions in `src/Helper.php` are automatically loaded.
+The package ships with the `DatabaseRetryServiceProvider`, which Laravel auto-discovers. No additional setup is needed.
 
 ## Usage
 
 ```php
-use MysqlDeadlocks\RetryHelper\DBTransactionRetryHelper as Retry;
+use MysqlDeadlocks\RetryHelper\Services\DeadlockTransactionRetrier as Retry;
 
-$order = Retry::transactionWithRetry(
+$order = Retry::runWithRetry(
     function () use ($payload) {
         $order = Order::create($payload);
         $order->logAuditTrail();
@@ -56,18 +56,34 @@ $order = Retry::transactionWithRetry(
 );
 ```
 
-`transactionWithRetry()` returns the value produced by your callback, just like `DB::transaction()`. If every attempt fails, the last `QueryException` is re-thrown so your calling code can continue its normal error handling.
+`runWithRetry()` returns the value produced by your callback, just like `DB::transaction()`. If every attempt fails, the last `QueryException` is re-thrown so your calling code can continue its normal error handling.  
 
 ### Parameters
 
 | Parameter     | Default                    | Description                                                                                                         |
 | ------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `maxRetries`  | `3`                        | Total number of attempts (initial try + retries).                                                                   |
-| `retryDelay`  | `2`                        | Base delay (seconds). Actual wait uses exponential backoff with ±25% jitter.                                        |
-| `logFileName` | `database/mysql-deadlocks` | Written to `storage/logs/{Y-m-d}/{logFileName}.log`. Can point to subdirectories.                                   |
+| `maxRetries`  | Config (`default: 3`)      | Total number of attempts (initial try + retries).                                                                   |
+| `retryDelay`  | Config (`default: 2s`)     | Base delay (seconds). Actual wait uses exponential backoff with ±25% jitter.                                        |
+| `logFileName` | Config (`default: database/mysql-deadlocks`) | Written to `storage/logs/{Y-m-d}/{logFileName}.log`. Can point to subdirectories.                                   |
 | `trxLabel`    | `''`                       | Optional label injected into log titles and stored in the service container as `tx.label` for downstream consumers. |
 
 Call the helper anywhere you would normally open a transaction—controllers, jobs, console commands, or domain services.
+
+## Configuration
+
+Publish the configuration file to tweak defaults globally:
+
+```bash
+php artisan vendor:publish --tag=mysql-deadlock-retry-config
+```
+
+Key options (`config/mysql-deadlock-retry.php`):
+
+- `max_retries`, `retry_delay`, and `log_file_name` set the package-wide defaults when you omit parameters. Each respects the matching environment variable (`MYSQL_DEADLOCK_MAX_RETRIES`, `MYSQL_DEADLOCK_RETRY_DELAY`, `MYSQL_DEADLOCK_LOG_FILE`).
+- `logging.channel` points at any existing Laravel log channel so you can reuse stacks or third-party drivers.
+- `logging.config` provides a full configuration array for `Log::build()` when you want a dedicated writer.
+- `logging.via` accepts a container binding, class name, or callable that resolves a PSR-3 logger—ideal when you need to hand logs off to a completely custom pipeline.
+- `logging.levels.success` / `logging.levels.failure` let you tune the severity emitted for successful retries and exhausted attempts (defaults: `warning` and `error`).
 
 ## Retry Conditions
 
@@ -82,7 +98,7 @@ If no attempt succeeds and all retries are exhausted, the last `QueryException` 
 
 ## Logging Behaviour
 
-Logs are written using a dedicated single-file channel per day:
+By default, logs are written using a dedicated single-file channel per day. Override `logging.channel`, `logging.config`, or `logging.via` to integrate with your own logging stack:
 
 - Success after retries → a warning entry titled `"[trxLabel] [MYSQL DEADLOCK RETRY - SUCCESS] After (Attempts: x/y) - Warning"`.
 - Failure after exhausting retries → an error entry titled `"[trxLabel] [MYSQL DEADLOCK RETRY - FAILED] After (Attempts: x/y) - Error"`.
@@ -95,6 +111,16 @@ Each log entry includes:
 - Request URL, method, authorization header length, and authenticated user ID when the request helper is bound.
 
 Set `logFileName` to segment logs by feature or workload (e.g., `logFileName: 'database/queues/payments'`).
+
+## Helper Utilities
+
+The package exposes dedicated support classes you can reuse in your own instrumentation:
+
+- `MysqlDeadlocks\RetryHelper\Support\DeadlockLogWriter` writes structured entries using the same format as the retrier.
+- `MysqlDeadlocks\RetryHelper\Support\TraceFormatter` converts debug backtraces into log-friendly arrays.
+- `MysqlDeadlocks\RetryHelper\Support\BindingStringifier` sanitises query bindings before logging.
+
+For testing scenarios, the retrier looks for a namespaced `MysqlDeadlocks\RetryHelper\sleep()` function before falling back to PHP's global `sleep()`, making it easy to assert backoff intervals without introducing delays.
 
 ## Testing the Package
 

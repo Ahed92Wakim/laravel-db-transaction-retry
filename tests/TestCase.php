@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests;
 
+use Illuminate\Config\Repository;
 use Illuminate\Container\Container;
 use Illuminate\Support\Facades\Facade;
 use PHPUnit\Framework\TestCase as BaseTestCase;
@@ -22,7 +23,13 @@ abstract class TestCase extends BaseTestCase
         Facade::setFacadeApplication($this->app);
         Facade::clearResolvedInstances();
 
-        $this->app->instance('config', []);
+        $configRepository = new Repository();
+        $configRepository->set(
+            'mysql-deadlock-retry',
+            require dirname(__DIR__) . '/config/mysql-deadlock-retry.php'
+        );
+
+        $this->app->instance('config', $configRepository);
         $this->app->instance('path.storage', $this->app->storagePath());
     }
 
