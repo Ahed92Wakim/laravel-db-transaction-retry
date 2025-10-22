@@ -25,8 +25,8 @@ abstract class TestCase extends BaseTestCase
 
         $configRepository = new Repository();
         $configRepository->set(
-            'mysql-deadlock-retry',
-            require dirname(__DIR__) . '/config/mysql-deadlock-retry.php'
+            'database-transaction-retry',
+            require dirname(__DIR__) . '/config/database-transaction-retry.php'
         );
 
         $this->app->instance('config', $configRepository);
@@ -47,7 +47,7 @@ final class TestApplication extends Container
 {
     public function storagePath($path = ''): string
     {
-        $base = sys_get_temp_dir() . '/laravel-mysql-deadlock-retry/storage';
+        $base = sys_get_temp_dir() . '/laravel-db-transaction-retry/storage';
 
         return $path === '' ? $base : $base . '/' . ltrim((string) $path, '/');
     }

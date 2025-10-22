@@ -1,12 +1,12 @@
 <?php
 
-namespace MysqlDeadlocks\RetryHelper\Support;
+namespace DatabaseTransactions\RetryHelper\Support;
 
 use Illuminate\Support\Facades\Log;
 use Psr\Log\LoggerInterface;
 use Throwable;
 
-class DeadlockLogWriter
+class TransactionRetryLogWriter
 {
     public static function write(array $payload, string $logFileName, string $level = 'error'): void
     {
@@ -15,18 +15,29 @@ class DeadlockLogWriter
         $levels = static::configuredLevels();
 
         $context  = is_array($payload) ? $payload : ['message' => (string) $payload];
-        $attempts = $context['attempt']    ?? 0;
-        $max      = $context['maxRetries'] ?? 0;
-        $label    = $context['trxLabel']   ?? '';
+        $attempts = (int) ($context['attempt'] ?? 0);
+        $max      = (int) ($context['maxRetries'] ?? 0);
+        $label    = (string) ($context['trxLabel'] ?? '');
 
         $normalizedLevel = static::normalizeLevel($level, $levels['failure']);
         $status          = strtolower((string) ($context['retryStatus'] ?? ($normalizedLevel === $levels['success'] ? 'success' : 'failure')));
         $statusLabel     = strtoupper($status === 'success' ? 'SUCCESS' : 'FAILED');
 
+        $exceptionClass = (string) ($context['exceptionClass'] ?? 'UnknownException');
+        $sqlState       = (string) ($context['sqlState'] ?? '');
+        $driverCode     = $context['driverCode'] ?? null;
+
+        $codeParts                             = [];
+        $sqlState !== ''       && $codeParts[] = 'SQLSTATE ' . $sqlState;
+        ! is_null($driverCode) && $codeParts[] = 'Driver ' . $driverCode;
+
+        $exceptionSummary = trim($exceptionClass . (count($codeParts) > 0 ? ' (' . implode(', ', $codeParts) . ')' : ''));
+
         $title = sprintf(
-            '[%s] [MYSQL DEADLOCK RETRY - %s] After (Attempts: %d/%d) - %s',
+            '[%s] [DATABASE TRANSACTION RETRY - %s] %s After (Attempts: %d/%d) - %s',
             $label,
             $statusLabel,
+            $exceptionSummary,
             $attempts,
             $max,
             ucfirst($normalizedLevel)
@@ -40,7 +51,7 @@ class DeadlockLogWriter
         $logging = [];
 
         if (function_exists('config')) {
-            $config = config('mysql-deadlock-retry.logging', []);
+            $config = config('database-transaction-retry.logging', []);
             if (is_array($config)) {
                 $logging = $config;
             }
@@ -102,7 +113,7 @@ class DeadlockLogWriter
             return $defaults;
         }
 
-        $levels = config('mysql-deadlock-retry.logging.levels', []);
+        $levels = config('database-transaction-retry.logging.levels', []);
 
         if (! is_array($levels)) {
             return $defaults;

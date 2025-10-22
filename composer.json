@@ -1,18 +1,18 @@
 {
-    "name": "ahed92wakim/laravel-mysql-deadlock-retry",
-    "description": "Gracefully retry Laravel transactions on MySQL deadlocks and serialization failures with configurable backoff, structured logging, and reusable helpers.",
+    "name": "ahed92wakim/laravel-db-transaction-retry",
+    "description": "Gracefully retry Laravel transactions on database deadlocks and other retryable errors with configurable backoff, structured logging, and reusable helpers.",
     "type": "library",
     "minimum-stability": "stable",
     "require": {
         "php": "^8.2",
-        "laravel/framework": "^11.0"
+        "laravel/framework": "^11.0 || ^12.0"
     },
     "license": [
         "MIT"
     ],
     "autoload": {
         "psr-4": {
-            "MysqlDeadlocks\\RetryHelper\\": "src/"
+            "DatabaseTransactions\\RetryHelper\\": "src/"
         }
     },
     "autoload-dev": {
@@ -23,7 +23,7 @@
     "extra": {
         "laravel": {
             "providers": [
-                "MysqlDeadlocks\\RetryHelper\\Providers\\DatabaseRetryServiceProvider"
+                "DatabaseTransactions\\RetryHelper\\Providers\\DatabaseTransactionRetryServiceProvider"
             ]
         }
     },

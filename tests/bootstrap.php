@@ -7,7 +7,7 @@ require __DIR__ . '/../vendor/autoload.php';
 if (! function_exists('storage_path')) {
     function storage_path(string $path = ''): string
     {
-        $base = sys_get_temp_dir() . '/laravel-mysql-deadlock-retry';
+        $base = sys_get_temp_dir() . '/laravel-db-transaction-retry';
 
         return $path === '' ? $base : $base . '/' . ltrim($path, '/');
     }
