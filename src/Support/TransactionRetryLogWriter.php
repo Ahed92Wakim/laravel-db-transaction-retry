@@ -28,7 +28,7 @@ class TransactionRetryLogWriter
         $driverCode     = $context['driverCode'] ?? null;
 
         $codeParts                             = [];
-        $sqlState !== ''       && $codeParts[]       = 'SQLSTATE ' . $sqlState;
+        $sqlState !== ''       && $codeParts[] = 'SQLSTATE ' . $sqlState;
         ! is_null($driverCode) && $codeParts[] = 'Driver ' . $driverCode;
 
         $exceptionSummary = trim($exceptionClass . (count($codeParts) > 0 ? ' (' . implode(', ', $codeParts) . ')' : ''));
