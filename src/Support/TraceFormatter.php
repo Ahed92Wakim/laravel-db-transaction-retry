@@ -1,6 +1,6 @@
 <?php
 
-namespace MysqlDeadlocks\RetryHelper\Support;
+namespace DatabaseTransactions\RetryHelper\Support;
 
 use Throwable;
 
