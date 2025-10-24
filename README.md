@@ -12,7 +12,7 @@
   <a href="LICENSE">
     <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT License">
   </a>
-  <img src="https://img.shields.io/badge/Laravel-%5E11-red.svg" alt="Laravel ^11">
+  <img src="https://img.shields.io/badge/Laravel-11%20%7C%7C%2012-red.svg" alt="Laravel 11 or 12">
   <img src="https://img.shields.io/badge/PHP-%5E8.2-blue.svg" alt="PHP ^8.2">
   <img src="https://img.shields.io/badge/style-PHP%20CS%20Fixer-informational.svg" alt="PHP CS Fixer">
 </p>
@@ -116,6 +116,19 @@ Each log entry includes:
 - Request URL, method, authorization header length, and authenticated user ID when the request helper is bound.
 
 Set `logFileName` to segment logs by feature or workload (e.g., `logFileName: 'database/queues/payments'`).
+
+## Runtime Toggle
+
+Use the built-in Artisan commands to temporarily disable or re-enable retries without touching configuration files:
+
+```bash
+php artisan db-transaction-retry:stop  # disable retries
+php artisan db-transaction-retry:start # enable retries
+```
+
+The commands write a small marker file inside the package (`storage/runtime/retry-disabled.marker`). As long as that file exists retries stay off; removing it or running `db-transaction-retry:start` brings them back. You can still set the `DB_TRANSACTION_RETRY_ENABLED` environment variable for a permanent default.
+
+> **Heads up:** The `db-transaction-retry:start` command only removes the disable marker—it does not override an explicit `database-transaction-retry.enabled=false` configuration (including the `DB_TRANSACTION_RETRY_ENABLED=false` environment variable). Update that setting to `true` if you want retries to remain enabled after the current process.
 
 ## Helper Utilities
 
