@@ -27,6 +27,7 @@ Resilient database transactions for Laravel applications that need to gracefully
 - Structured logs with request metadata, SQL, bindings, connection information, and stack traces written to dated files under `storage/logs/{Y-m-d}`.
 - Log titles include the exception class and codes, making it easy to see exactly what triggered the retry.
 - Optional transaction labels and custom log file names for easier traceability across microservices and jobs.
+- Convenience `DB::transactionWithRetry` macro on both the facade and individual connections so existing transaction code stays readable.
 - Laravel package auto-discovery; no manual service provider registration required.
 
 ## Installation
@@ -57,6 +58,32 @@ $order = Retry::runWithRetry(
 ```
 
 `runWithRetry()` returns the value produced by your callback, just like `DB::transaction()`. If every attempt fails, the last exception is re-thrown so your calling code can continue its normal error handling.
+
+### DB Macro Convenience
+
+Prefer working through the database facade? Call the included `transactionWithRetry` macro and keep identical behaviour and parameters:
+
+```php
+$invoice = DB::transactionWithRetry(
+    function () use ($payload) {
+        return Invoice::fromPayload($payload);
+    },
+    maxRetries: 5,
+    retryDelay: 1,
+    trxLabel: 'invoice-sync'
+);
+```
+
+Need connection-specific logic? Because the macro is applied to `Illuminate\Support\Facades\DB` **and** to every resolved `Illuminate\Database\Connection`, you can call it on connection instances as well:
+
+```php
+$report = DB::connection('analytics')->transactionWithRetry(
+    fn () => $builder->lockForUpdate()->selectRaw('count(*) as total')->first(),
+    trxLabel: 'analytics-rollup'
+);
+```
+
+The macro is registered automatically when the service provider boots, and sets the `tx.label` container binding the same way as the helper.
 
 ### Parameters
 

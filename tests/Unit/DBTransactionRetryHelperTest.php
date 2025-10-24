@@ -11,14 +11,19 @@ namespace Tests;
 
 use DatabaseTransactions\RetryHelper\Console\StartRetryCommand;
 use DatabaseTransactions\RetryHelper\Console\StopRetryCommand;
+use DatabaseTransactions\RetryHelper\Providers\DbMacroServiceProvider;
 use DatabaseTransactions\RetryHelper\Services\TransactionRetrier;
 use DatabaseTransactions\RetryHelper\Support\RetryToggle;
 use Illuminate\Container\Container;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Traits\Macroable;
 use Psr\Log\AbstractLogger;
 use Symfony\Component\Console\Tester\CommandTester;
 
 beforeEach(function (): void {
+    FakeDatabaseManager::flushMacros();
+
     $this->database   = new FakeDatabaseManager();
     $this->logManager = new FakeLogManager();
 
@@ -199,6 +204,26 @@ test('throws after max retries and logs error', function (): void {
     expect($record['context']['exceptionClass'])->toBe(QueryException::class);
     expect($record['context']['sqlState'])->toBe('40001');
     expect($record['context']['driverCode'])->toBe(1213);
+});
+
+test('db facade macro delegates to transaction retrier', function (): void {
+    $provider = new DbMacroServiceProvider($this->app);
+    $provider->boot();
+
+    $attempts = 0;
+
+    expect(FakeDatabaseManager::hasMacro('transactionWithRetry'))->toBeTrue();
+
+    $result = DB::transactionWithRetry(function () use (&$attempts) {
+        $attempts++;
+
+        return 'macro-done';
+    }, trxLabel: 'macro-test');
+
+    expect($result)->toBe('macro-done');
+    expect($attempts)->toBe(1);
+    expect($this->database->transactionCalls)->toBe(1);
+    expect($this->app->make('tx.label'))->toBe('macro-test');
 });
 
 test('does not retry for non deadlock query exception', function (): void {
@@ -487,6 +512,8 @@ final class CustomRetryException extends \RuntimeException
 
 final class FakeDatabaseManager
 {
+    use Macroable;
+
     public int $transactionCalls = 0;
     /** @var list<array{0:string,1:array}> */
     public array $statementCalls = [];
