@@ -3,6 +3,18 @@
 return [
     /*
     |--------------------------------------------------------------------------
+    | Toggle
+    |--------------------------------------------------------------------------
+    |
+    | Enable or disable the retry helper at runtime. This can be overridden
+    | through the provided Artisan commands when a cache store is available.
+    |
+    */
+
+    'enabled' => env('DB_TRANSACTION_RETRY_ENABLED', true),
+
+    /*
+    |--------------------------------------------------------------------------
     | Retry Defaults
     |--------------------------------------------------------------------------
     |

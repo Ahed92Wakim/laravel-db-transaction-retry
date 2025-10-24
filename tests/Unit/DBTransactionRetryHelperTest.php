@@ -9,10 +9,14 @@ function sleep(int $seconds): void
 
 namespace Tests;
 
+use DatabaseTransactions\RetryHelper\Console\StartRetryCommand;
+use DatabaseTransactions\RetryHelper\Console\StopRetryCommand;
 use DatabaseTransactions\RetryHelper\Services\TransactionRetrier;
+use DatabaseTransactions\RetryHelper\Support\RetryToggle;
 use Illuminate\Container\Container;
 use Illuminate\Database\QueryException;
 use Psr\Log\AbstractLogger;
+use Symfony\Component\Console\Tester\CommandTester;
 
 beforeEach(function (): void {
     $this->database   = new FakeDatabaseManager();
@@ -22,6 +26,7 @@ beforeEach(function (): void {
     $this->app->instance('log', $this->logManager);
 
     SleepSpy::reset();
+    RetryToggle::enable();
 });
 
 test('returns callback result without retries', function (): void {
@@ -31,6 +36,59 @@ test('returns callback result without retries', function (): void {
     expect($this->database->transactionCalls)->toBe(1);
     expect($this->logManager->records)->toBe([]);
     expect(SleepSpy::$delays)->toBe([]);
+});
+
+test('bypasses retry logic when disabled', function (): void {
+    Container::getInstance()->make('config')->set(
+        'database-transaction-retry.enabled',
+        false
+    );
+
+    $attempts = 0;
+
+    try {
+        TransactionRetrier::runWithRetry(function () use (&$attempts): void {
+            $attempts++;
+
+            throw makeQueryException(1213);
+        }, maxRetries: 3, retryDelay: 1, trxLabel: 'disabled');
+
+        $this->fail('Expected QueryException was not thrown.');
+    } catch (QueryException $th) {
+        expect($th->errorInfo[1])->toBe(1213);
+    }
+
+    expect($attempts)->toBe(1);
+    expect($this->database->transactionCalls)->toBe(1);
+    expect($this->logManager->records)->toBe([]);
+    expect(SleepSpy::$delays)->toBe([]);
+});
+
+test('bypasses retry logic when persisted marker exists', function (): void {
+    expect(RetryToggle::disable())->toBeTrue();
+    expect(is_file(RetryToggle::markerPath()))->toBeTrue();
+
+    $attempts = 0;
+
+    try {
+        TransactionRetrier::runWithRetry(function () use (&$attempts): void {
+            $attempts++;
+
+            throw makeQueryException(1213);
+        }, maxRetries: 3, retryDelay: 1, trxLabel: 'disabled-marker');
+
+        $this->fail('Expected QueryException was not thrown.');
+    } catch (QueryException $th) {
+        expect($th->errorInfo[1])->toBe(1213);
+    } finally {
+        RetryToggle::enable();
+    }
+
+    expect($attempts)->toBe(1);
+    expect($this->database->transactionCalls)->toBe(1);
+    expect($this->logManager->records)->toBe([]);
+    expect(SleepSpy::$delays)->toBe([]);
+    expect(is_file(RetryToggle::markerPath()))->toBeFalse();
 });
 
 test('retries on deadlock and logs warning', function (): void {
@@ -62,6 +120,55 @@ test('retries on deadlock and logs warning', function (): void {
     expect($record['context']['exceptionClass'])->toBe(QueryException::class);
     expect($record['context']['sqlState'])->toBe('40001');
     expect($record['context']['driverCode'])->toBe(1213);
+});
+
+test('uses configured success log level for retry logging', function (): void {
+    Container::getInstance()->make('config')->set(
+        'database-transaction-retry.logging.levels',
+        ['success' => 'notice', 'failure' => 'alert']
+    );
+
+    $attempts = 0;
+
+    $result = TransactionRetrier::runWithRetry(function () use (&$attempts) {
+        $attempts++;
+
+        if ($attempts === 1) {
+            throw makeQueryException(1213);
+        }
+
+        return 'ok';
+    }, maxRetries: 2, retryDelay: 1, trxLabel: 'level-success');
+
+    expect($result)->toBe('ok');
+    expect($this->logManager->records)->toHaveCount(1);
+    $record = $this->logManager->records[0];
+
+    expect($record['level'])->toBe('notice');
+    expect($record['message'])->toContain('Notice');
+});
+
+test('uses configured failure log level for retry logging', function (): void {
+    Container::getInstance()->make('config')->set(
+        'database-transaction-retry.logging.levels',
+        ['success' => 'info', 'failure' => 'critical']
+    );
+
+    try {
+        TransactionRetrier::runWithRetry(function (): void {
+            throw makeQueryException(1213);
+        }, maxRetries: 2, retryDelay: 1, trxLabel: 'level-failure');
+
+        $this->fail('Expected QueryException was not thrown.');
+    } catch (QueryException $exception) {
+        expect($exception->errorInfo[1])->toBe(1213);
+    }
+
+    expect($this->logManager->records)->toHaveCount(1);
+    $record = $this->logManager->records[0];
+
+    expect($record['level'])->toBe('critical');
+    expect($record['message'])->toContain('Critical');
 });
 
 test('throws after max retries and logs error', function (): void {
@@ -233,6 +340,123 @@ test('retries when exception class is configured', function (): void {
     expect($record['context']['exceptionClass'])->toBe(CustomRetryException::class);
     expect(array_key_exists('driverCode', $record['context']))->toBeFalse();
     expect(array_key_exists('sqlState', $record['context']))->toBeFalse();
+});
+
+test('binds transaction label into container during execution', function (): void {
+    $captured = null;
+
+    TransactionRetrier::runWithRetry(function () use (&$captured) {
+        $captured = app()->make('tx.label');
+
+        return 'done';
+    }, trxLabel: 'orders-sync');
+
+    expect($captured)->toBe('orders-sync');
+    expect(app()->make('tx.label'))->toBe('orders-sync');
+});
+
+test('does not bind empty transaction label', function (): void {
+    TransactionRetrier::runWithRetry(fn () => 'ok', trxLabel: '');
+
+    expect(app()->bound('tx.label'))->toBeFalse();
+});
+
+test('detects explicitly disabled configuration values', function (mixed $value, bool $expected): void {
+    expect(RetryToggle::isExplicitlyDisabledValue($value))->toBe($expected);
+})->with([
+    'boolean false' => [false, true],
+    'boolean true'  => [true, false],
+    'string false'  => ['false', true],
+    'string true'   => ['true', false],
+    'numeric zero'  => [0, true],
+    'numeric one'   => [1, false],
+    'empty string'  => ['', false],
+    'null value'    => [null, false],
+    'off keyword'   => ['off', true],
+    'yes keyword'   => ['yes', false],
+]);
+
+test('start command enables retries and removes marker', function (): void {
+    RetryToggle::disable();
+    expect(is_file(RetryToggle::markerPath()))->toBeTrue();
+
+    try {
+        $command = new StartRetryCommand();
+        $command->setLaravel($this->app);
+
+        $tester   = new CommandTester($command);
+        $exitCode = $tester->execute([]);
+
+        expect($exitCode)->toBe(0);
+
+        $config = Container::getInstance()->make('config');
+        expect($config->get('database-transaction-retry.enabled'))->toBeTrue();
+        expect(is_file(RetryToggle::markerPath()))->toBeFalse();
+        expect($tester->getDisplay())->toContain('Database transaction retries have been enabled.');
+        expect($tester->getDisplay())->toContain('Current status: ENABLED');
+    } finally {
+        RetryToggle::enable();
+    }
+});
+
+test('start command honours explicitly disabled configuration', function (): void {
+    Container::getInstance()->make('config')->set('database-transaction-retry.enabled', false);
+
+    try {
+        $command = new StartRetryCommand();
+        $command->setLaravel($this->app);
+
+        $tester   = new CommandTester($command);
+        $exitCode = $tester->execute([]);
+
+        expect($exitCode)->toBe(0);
+        $config = Container::getInstance()->make('config');
+        expect($config->get('database-transaction-retry.enabled'))->toBeFalse();
+        expect(RetryToggle::isEnabled($config->get('database-transaction-retry')))->toBeFalse();
+        expect($tester->getDisplay())->toContain('Base configuration keeps retries disabled');
+    } finally {
+        RetryToggle::enable();
+    }
+});
+
+test('stop command disables retries and creates marker', function (): void {
+    RetryToggle::enable();
+    if (is_file(RetryToggle::markerPath())) {
+        unlink(RetryToggle::markerPath());
+    }
+
+    $command = new StopRetryCommand();
+    $command->setLaravel($this->app);
+
+    $tester   = new CommandTester($command);
+    $exitCode = $tester->execute([]);
+
+    expect($exitCode)->toBe(0);
+    $config = Container::getInstance()->make('config');
+    expect($config->get('database-transaction-retry.enabled'))->toBeFalse();
+    expect(is_file(RetryToggle::markerPath()))->toBeTrue();
+    expect($tester->getDisplay())->toContain('Database transaction retries have been disabled.');
+    expect($tester->getDisplay())->toContain('Current status: DISABLED');
+
+    RetryToggle::enable();
+});
+
+test('stop command honours explicitly disabled configuration', function (): void {
+    Container::getInstance()->make('config')->set('database-transaction-retry.enabled', false);
+
+    $command = new StopRetryCommand();
+    $command->setLaravel($this->app);
+
+    $tester   = new CommandTester($command);
+    $exitCode = $tester->execute([]);
+
+    expect($exitCode)->toBe(0);
+    $config = Container::getInstance()->make('config');
+    expect($config->get('database-transaction-retry.enabled'))->toBeFalse();
+    expect($tester->getDisplay())->toContain('Base configuration already disables retries');
+    expect(is_file(RetryToggle::markerPath()))->toBeFalse();
+
+    RetryToggle::enable();
 });
 
 function makeQueryException(int $driverCode, string|int $sqlState = 40001): QueryException

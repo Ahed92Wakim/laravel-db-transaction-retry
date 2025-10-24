@@ -3,6 +3,7 @@
 namespace DatabaseTransactions\RetryHelper\Services;
 
 use Closure;
+use DatabaseTransactions\RetryHelper\Support\RetryToggle;
 use DatabaseTransactions\RetryHelper\Support\TraceFormatter;
 use DatabaseTransactions\RetryHelper\Support\TransactionRetryLogWriter;
 use Illuminate\Database\QueryException;
@@ -31,7 +32,15 @@ class TransactionRetrier
         ?string $logFileName = null,
         string $trxLabel = ''
     ): mixed {
-        $config = function_exists('config') ? config('database-transaction-retry', []) : [];
+        $config   = function_exists('config') ? config('database-transaction-retry', []) : [];
+        $config   = is_array($config) ? $config : [];
+        $trxLabel = $trxLabel ?? '';
+
+        if (! RetryToggle::isEnabled($config)) {
+            static::exposeTransactionLabel($trxLabel);
+
+            return DB::transaction($callback);
+        }
 
         $maxRetries  ??= (int) ($config['max_retries'] ?? 3);
         $retryDelay  ??= (int) ($config['retry_delay'] ?? 2);
@@ -53,7 +62,7 @@ class TransactionRetrier
                 static::applyLockWaitTimeout($config);
 
                 // Expose the transaction label if the app wants to read it during the callback.
-                $trxLabel === '' || app()->instance('tx.label', $trxLabel);
+                static::exposeTransactionLabel($trxLabel);
 
                 return DB::transaction($callback);
             } catch (Throwable $exception) {
@@ -339,5 +348,18 @@ class TransactionRetrier
             : [];
 
         return in_array(1205, $driverCodes, true);
+    }
+
+    protected static function exposeTransactionLabel(string $trxLabel): void
+    {
+        if ($trxLabel === '') {
+            return;
+        }
+
+        if (! function_exists('app')) {
+            return;
+        }
+
+        app()->instance('tx.label', $trxLabel);
     }
 }

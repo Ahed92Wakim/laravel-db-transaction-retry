@@ -2,6 +2,8 @@
 
 namespace DatabaseTransactions\RetryHelper\Providers;
 
+use DatabaseTransactions\RetryHelper\Console\StartRetryCommand;
+use DatabaseTransactions\RetryHelper\Console\StopRetryCommand;
 use Illuminate\Support\ServiceProvider;
 
 class DatabaseTransactionRetryServiceProvider extends ServiceProvider
@@ -27,6 +29,11 @@ class DatabaseTransactionRetryServiceProvider extends ServiceProvider
             $this->publishes([
                 __DIR__ . '/../../config/database-transaction-retry.php' => $configPath,
             ], 'database-transaction-retry-config');
+
+            $this->commands([
+                StartRetryCommand::class,
+                StopRetryCommand::class,
+            ]);
         }
     }
 }
