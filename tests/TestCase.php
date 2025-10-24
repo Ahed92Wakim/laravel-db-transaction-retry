@@ -51,4 +51,9 @@ final class TestApplication extends Container
 
         return $path === '' ? $base : $base . '/' . ltrim((string) $path, '/');
     }
+
+    public function runningUnitTests(): bool
+    {
+        return true;
+    }
 }
