@@ -67,7 +67,7 @@ class TransactionRetrier
                 return DB::transaction($callback);
             } catch (Throwable $exception) {
                 $exceptionCaught  = true;
-                $shouldRetryError = static::shouldRetry($exception);
+                $shouldRetryError = static::shouldRetry($exception, $config);
 
                 if ($shouldRetryError) {
                     $attempt++;
@@ -100,50 +100,36 @@ class TransactionRetrier
         throw new RuntimeException('Transaction with retry exhausted after ' . $maxRetries . ' attempts.');
     }
 
-    protected static function shouldRetry(Throwable $throwable): bool
+    protected static function shouldRetry(Throwable $throwable, array $config): bool
     {
-        $config = function_exists('config') ? config('database-transaction-retry.retryable_exceptions', []) : [];
-
-        if (! is_array($config)) {
-            $config = [];
+        if (! $throwable instanceof QueryException) {
+            return false;
         }
 
-        $retryableClasses = array_filter(
-            array_map('trim', is_array($config['classes'] ?? null) ? $config['classes'] : []),
-            static fn ($class) => $class !== ''
-        );
-
-        foreach ($retryableClasses as $class) {
-            if (class_exists($class) && $throwable instanceof $class) {
-                return true;
-            }
-        }
-
-        if ($throwable instanceof QueryException) {
-            return static::isRetryableQueryException($throwable, $config);
-        }
-
-        return false;
+        return static::isRetryableQueryException($throwable, $config);
     }
 
     protected static function isRetryableQueryException(QueryException $exception, array $config): bool
     {
-        $sqlStates = is_array($config['sql_states'] ?? null) ? $config['sql_states'] : [];
-        $sqlStates = array_map(static fn ($state) => strtoupper((string) $state), $sqlStates);
-
-        $driverCodes = is_array($config['driver_error_codes'] ?? null) ? $config['driver_error_codes'] : [];
-        $driverCodes = array_map(static fn ($code) => (int) $code, $driverCodes);
-
         $sqlState  = strtoupper((string) $exception->getCode());
         $driverErr = is_array($exception->errorInfo ?? null) && isset($exception->errorInfo[1])
             ? (int) $exception->errorInfo[1]
             : null;
 
-        if (in_array($sqlState, $sqlStates, true)) {
-            return true;
+        $retryDeadlock = static::normalizeBoolean($config['retry_on_deadlock'] ?? true, true);
+        $retryLockWait = static::normalizeBoolean($config['retry_on_lock_wait_timeout'] ?? false, false);
+
+        if ($retryDeadlock) {
+            if ($sqlState === '40001') {
+                return true;
+            }
+
+            if (! is_null($driverErr) && $driverErr === 1213) {
+                return true;
+            }
         }
 
-        if (! is_null($driverErr) && in_array($driverErr, $driverCodes, true)) {
+        if ($retryLockWait && ! is_null($driverErr) && $driverErr === 1205) {
             return true;
         }
 
@@ -339,15 +325,7 @@ class TransactionRetrier
 
     protected static function isLockWaitRetryEnabled(array $config): bool
     {
-        $retryable = is_array($config['retryable_exceptions'] ?? null)
-            ? $config['retryable_exceptions']
-            : [];
-
-        $driverCodes = is_array($retryable['driver_error_codes'] ?? null)
-            ? array_map(static fn ($code) => (int) $code, $retryable['driver_error_codes'])
-            : [];
-
-        return in_array(1205, $driverCodes, true);
+        return static::normalizeBoolean($config['retry_on_lock_wait_timeout'] ?? false, false);
     }
 
     protected static function exposeTransactionLabel(string $trxLabel): void
@@ -361,5 +339,34 @@ class TransactionRetrier
         }
 
         app()->instance('tx.label', $trxLabel);
+    }
+
+    protected static function normalizeBoolean(mixed $value, bool $fallback): bool
+    {
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if (is_string($value)) {
+            $value = strtolower(trim($value));
+
+            if ($value === '') {
+                return $fallback;
+            }
+
+            if (in_array($value, ['false', '0', 'off', 'no'], true)) {
+                return false;
+            }
+
+            if (in_array($value, ['true', '1', 'on', 'yes'], true)) {
+                return true;
+            }
+        }
+
+        if (is_numeric($value)) {
+            return (int) $value !== 0;
+        }
+
+        return $fallback;
     }
 }

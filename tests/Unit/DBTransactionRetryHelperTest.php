@@ -242,6 +242,32 @@ test('does not retry for non deadlock query exception', function (): void {
     expect(SleepSpy::$delays)->toBe([]);
 });
 
+test('does not retry when deadlock retry disabled', function (): void {
+    Container::getInstance()->make('config')->set(
+        'database-transaction-retry.retry_on_deadlock',
+        false
+    );
+
+    $attempts = 0;
+
+    try {
+        TransactionRetrier::runWithRetry(function () use (&$attempts): void {
+            $attempts++;
+
+            throw makeQueryException(1213);
+        }, maxRetries: 3, retryDelay: 1, trxLabel: 'deadlock-disabled');
+
+        $this->fail('Expected QueryException was not thrown.');
+    } catch (QueryException $th) {
+        expect($th->errorInfo[1])->toBe(1213);
+    }
+
+    expect($attempts)->toBe(1);
+    expect($this->database->transactionCalls)->toBe(1);
+    expect(SleepSpy::$delays)->toBe([]);
+    expect($this->logManager->records)->toBe([]);
+});
+
 test('retries on lock wait timeout and applies configured session timeout', function (): void {
     Container::getInstance()->make('config')->set(
         'database-transaction-retry.lock_wait_timeout_seconds',
@@ -249,8 +275,8 @@ test('retries on lock wait timeout and applies configured session timeout', func
     );
 
     Container::getInstance()->make('config')->set(
-        'database-transaction-retry.retryable_exceptions.driver_error_codes',
-        [1205]
+        'database-transaction-retry.retry_on_lock_wait_timeout',
+        true
     );
 
     $attempts = 0;
@@ -288,13 +314,8 @@ test('does not change session timeout when lock wait retry disabled', function (
     );
 
     Container::getInstance()->make('config')->set(
-        'database-transaction-retry.retryable_exceptions.driver_error_codes',
-        [1213]
-    );
-
-    Container::getInstance()->make('config')->set(
-        'database-transaction-retry.retryable_exceptions.sql_states',
-        []
+        'database-transaction-retry.retry_on_lock_wait_timeout',
+        false
     );
 
     try {
@@ -310,61 +331,26 @@ test('does not change session timeout when lock wait retry disabled', function (
     expect($this->database->statementCalls)->toBe([]);
 });
 
-test('retries when driver code is configured', function (): void {
-    Container::getInstance()->make('config')->set(
-        'database-transaction-retry.retryable_exceptions.driver_error_codes',
-        [1213, 999]
-    );
-
+test('retries when SQLSTATE indicates deadlock even without driver code', function (): void {
     $attempts = 0;
 
     $result = TransactionRetrier::runWithRetry(function () use (&$attempts) {
         $attempts++;
 
         if ($attempts === 1) {
-            throw makeQueryException(999, 0);
+            throw makeSqlStateOnlyQueryException('40001');
         }
 
-        return 'recovered';
-    }, maxRetries: 3, retryDelay: 1, trxLabel: 'invoices');
+        return 'ok';
+    }, maxRetries: 3, retryDelay: 1, trxLabel: 'sqlstate-deadlock');
 
-    expect($result)->toBe('recovered');
+    expect($result)->toBe('ok');
     expect($this->database->transactionCalls)->toBe(2);
     expect($this->logManager->records)->toHaveCount(1);
     $record = $this->logManager->records[0];
 
-    expect($record['message'])->toBe('[invoices] [DATABASE TRANSACTION RETRY - SUCCESS] Illuminate\Database\QueryException (SQLSTATE 00000, Driver 999) After (Attempts: 1/3) - Warning');
-    expect($record['context']['driverCode'])->toBe(999);
-    expect($record['context']['sqlState'])->toBe('00000');
-});
-
-test('retries when exception class is configured', function (): void {
-    Container::getInstance()->make('config')->set(
-        'database-transaction-retry.retryable_exceptions.classes',
-        [CustomRetryException::class]
-    );
-
-    $attempts = 0;
-
-    $result = TransactionRetrier::runWithRetry(function () use (&$attempts) {
-        $attempts++;
-
-        if ($attempts === 1) {
-            throw new CustomRetryException('try again');
-        }
-
-        return 'ok';
-    }, maxRetries: 3, retryDelay: 1, trxLabel: 'custom');
-
-    expect($result)->toBe('ok');
-    expect($this->database->transactionCalls)->toBe(2);
-
-    $record = $this->logManager->records[0];
-
-    expect($record['message'])->toBe('[custom] [DATABASE TRANSACTION RETRY - SUCCESS] Tests\\CustomRetryException After (Attempts: 1/3) - Warning');
-    expect($record['context']['exceptionClass'])->toBe(CustomRetryException::class);
-    expect(array_key_exists('driverCode', $record['context']))->toBeFalse();
-    expect(array_key_exists('sqlState', $record['context']))->toBeFalse();
+    expect($record['context']['sqlState'])->toBe('40001');
+    expect($record['context']['driverCode'])->toBeNull();
 });
 
 test('binds transaction label into container during execution', function (): void {
@@ -506,8 +492,26 @@ function makeQueryException(int $driverCode, string|int $sqlState = 40001): Quer
     );
 }
 
-final class CustomRetryException extends \RuntimeException
+function makeSqlStateOnlyQueryException(string|int $sqlState = 40001): QueryException
 {
+    $sqlStateString = strtoupper((string) $sqlState);
+
+    if (strlen($sqlStateString) < 5) {
+        $sqlStateString = str_pad($sqlStateString, 5, '0', STR_PAD_LEFT);
+    }
+
+    $pdo = new \PDOException(
+        'SQLSTATE[' . $sqlStateString . ']: Driver error',
+        is_numeric($sqlState) ? (int) $sqlState : 0
+    );
+    $pdo->errorInfo = [$sqlStateString, null, 'Driver error'];
+
+    return new QueryException(
+        'mysql',
+        'insert into foo (bar) values (?)',
+        ['baz'],
+        $pdo
+    );
 }
 
 final class FakeDatabaseManager
