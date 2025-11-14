@@ -27,6 +27,7 @@ Resilient database transactions for Laravel applications that need to gracefully
 - Structured logs with request metadata, SQL, bindings, connection information, and stack traces written to dated files under `storage/logs/{Y-m-d}`.
 - Log titles include the exception class and codes, making it easy to see exactly what triggered the retry.
 - Optional transaction labels and custom log file names for easier traceability across microservices and jobs.
+- Convenience `DB::transactionWithRetry` macro on both the facade and individual connections so existing transaction code stays readable.
 - Laravel package auto-discovery; no manual service provider registration required.
 
 ## Installation
@@ -58,6 +59,32 @@ $order = Retry::runWithRetry(
 
 `runWithRetry()` returns the value produced by your callback, just like `DB::transaction()`. If every attempt fails, the last exception is re-thrown so your calling code can continue its normal error handling.
 
+### DB Macro Convenience
+
+Prefer working through the database facade? Call the included `transactionWithRetry` macro and keep identical behaviour and parameters:
+
+```php
+$invoice = DB::transactionWithRetry(
+    function () use ($payload) {
+        return Invoice::fromPayload($payload);
+    },
+    maxRetries: 5,
+    retryDelay: 1,
+    trxLabel: 'invoice-sync'
+);
+```
+
+Need connection-specific logic? Because the macro is applied to `Illuminate\Support\Facades\DB` **and** to every resolved `Illuminate\Database\Connection`, you can call it on connection instances as well:
+
+```php
+$report = DB::connection('analytics')->transactionWithRetry(
+    fn () => $builder->lockForUpdate()->selectRaw('count(*) as total')->first(),
+    trxLabel: 'analytics-rollup'
+);
+```
+
+The macro is registered automatically when the service provider boots, and sets the `tx.label` container binding the same way as the helper.
+
 ### Parameters
 
 | Parameter     | Default                                   | Description                                                                                                         |
@@ -83,23 +110,21 @@ php artisan vendor:publish --tag=database-transaction-retry-config
 - `lock_wait_timeout_seconds` lets you override `innodb_lock_wait_timeout` per attempt; set the matching environment variable (`DB_TRANSACTION_RETRY_LOCK_WAIT_TIMEOUT`) to control the session value or leave null to use the database default.
 - `logging.channel` points at any existing Laravel log channel so you can reuse stacks or third-party drivers.
 - `logging.levels.success` / `logging.levels.failure` let you tune the severity emitted for successful retries and exhausted attempts (defaults: `warning` and `error`).
-- `retryable_exceptions.sql_states` lists SQLSTATE codes that should trigger a retry (defaults to `40001`).
-- `retryable_exceptions.driver_error_codes` lists driver-specific error codes (defaults to `1213` deadlocks and `1205` lock wait timeouts). Including `1205` not only enables retries but also activates the optional session lock wait timeout override when configured.
-- `retryable_exceptions.classes` lets you specify fully-qualified exception class names that should always be retried.
+- `retry_on_deadlock` toggles the built-in handling for MySQL deadlocks (`1213`). Set `DB_TRANSACTION_RETRY_ON_DEADLOCK=false` to disable it.
+- `retry_on_lock_wait_timeout` toggles retries for MySQL lock wait timeouts (`1205`) **and** activates the optional session timeout override. Set `DB_TRANSACTION_RETRY_ON_LOCK_WAIT_TIMEOUT=true` to enable it.
 
 ## Retry Conditions
 
 Retries are attempted when the caught exception matches one of the configured conditions:
 
-- `Illuminate\Database\QueryException` with a SQLSTATE listed in `retryable_exceptions.sql_states`.
-- `Illuminate\Database\QueryException` with a driver error code listed in `retryable_exceptions.driver_error_codes` (defaults include `1213` deadlocks and `1205` lock wait timeouts).
-- Any exception instance whose class appears in `retryable_exceptions.classes`.
+- `Illuminate\Database\QueryException` for MySQL deadlocks (`1213`) when `retry_on_deadlock` is enabled (default).
+- `Illuminate\Database\QueryException` for MySQL lock wait timeouts (`1205`) when `retry_on_lock_wait_timeout` is enabled.
 
 Everything else (e.g., constraint violations, syntax errors, application exceptions) is surfaced immediately without logging or sleeping. If no attempt succeeds and all retries are exhausted, the last exception is re-thrown. In the rare case nothing is thrown but the loop exits, a `RuntimeException` is raised to signal exhaustion.
 
 ## Lock Wait Timeout
 
-When `lock_wait_timeout_seconds` is configured, the retrier issues `SET SESSION innodb_lock_wait_timeout = {seconds}` on the active connection before each attempt, but only when the retry rules include the lock-wait timeout driver code (`1205`). This keeps the timeout predictable even after reconnects or pool reuse, and on drivers that do not support the statement the helper safely ignores the failure.
+When `lock_wait_timeout_seconds` is configured, the retrier issues `SET SESSION innodb_lock_wait_timeout = {seconds}` on the active connection before each attempt, but only when `retry_on_lock_wait_timeout` is enabled. This keeps the timeout predictable even after reconnects or pool reuse, and on drivers that do not support the statement the helper safely ignores the failure.
 
 ## Logging Behaviour
 
