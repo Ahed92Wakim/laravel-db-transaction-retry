@@ -2,6 +2,7 @@
 
 namespace DatabaseTransactions\RetryHelper\Providers;
 
+use DatabaseTransactions\RetryHelper\Console\InstallCommand;
 use DatabaseTransactions\RetryHelper\Console\RollPartitionsCommand;
 use DatabaseTransactions\RetryHelper\Console\StartRetryCommand;
 use DatabaseTransactions\RetryHelper\Console\StopRetryCommand;
@@ -33,12 +34,13 @@ class DatabaseTransactionRetryServiceProvider extends ServiceProvider
             ], 'database-transaction-retry-config');
 
             $this->publishes([
-                __DIR__ . '/../../database/migrations/create_transaction_retry_events_table.php' => $this->app->databasePath(
-                    'migrations/' . date('Y_m_d_His') . '_create_transaction_retry_events_table.php'
+                __DIR__ . '/../../database/migrations/2025_01_17_000000_create_transaction_retry_events_table.php' => $this->app->databasePath(
+                    'migrations/2025_01_17_000000_create_transaction_retry_events_table.php'
                 ),
             ], 'database-transaction-retry-migrations');
 
             $this->commands([
+                InstallCommand::class,
                 RollPartitionsCommand::class,
                 StartRetryCommand::class,
                 StopRetryCommand::class,

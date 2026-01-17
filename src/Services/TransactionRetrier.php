@@ -3,6 +3,7 @@
 namespace DatabaseTransactions\RetryHelper\Services;
 
 use Closure;
+use DatabaseTransactions\RetryHelper\Support\BindingStringifier;
 use DatabaseTransactions\RetryHelper\Support\RetryToggle;
 use DatabaseTransactions\RetryHelper\Support\TraceFormatter;
 use DatabaseTransactions\RetryHelper\Support\TransactionRetryLogWriter;
@@ -71,7 +72,10 @@ class TransactionRetrier
 
                 if ($shouldRetryError) {
                     $attempt++;
-                    $logEntries[] = static::makeRetryContext($exception, $attempt, $maxRetries, $trxLabel);
+                    $entry        = static::makeRetryContext($exception, $attempt, $maxRetries, $trxLabel);
+                    $logEntries[] = $entry;
+
+                    static::logAttempt($entry, $logFileName);
 
                     if ($attempt >= $maxRetries) {
                         $throwable = $exception;
@@ -174,6 +178,8 @@ class TransactionRetrier
             }
 
             $context['rawSql']    = $rawSql;
+            $context['sql']       = $sql;
+            $context['bindings']  = BindingStringifier::forLogs($bindings);
             $context['errorInfo'] = $throwable->errorInfo;
             $context['sqlState']  = isset($throwable->errorInfo[0])
                 ? (string) $throwable->errorInfo[0]
@@ -195,10 +201,11 @@ class TransactionRetrier
     protected static function requestSnapshot(): array
     {
         $data = [
-            'url'    => null,
-            'method' => null,
-            'token'  => null,
-            'userId' => null,
+            'url'       => null,
+            'method'    => null,
+            'routeName' => null,
+            'token'     => null,
+            'userId'    => null,
         ];
 
         if (! function_exists('request') || ! app()->bound('request')) {
@@ -209,6 +216,15 @@ class TransactionRetrier
 
         $data['url']    = method_exists($request, 'getUri') ? $request->getUri() : null;
         $data['method'] = method_exists($request, 'getMethod') ? $request->getMethod() : null;
+
+        if (method_exists($request, 'route')) {
+            $route = $request->route();
+            if (is_object($route) && method_exists($route, 'getName')) {
+                $data['routeName'] = $route->getName();
+            } elseif (is_string($route)) {
+                $data['routeName'] = $route;
+            }
+        }
 
         if (method_exists($request, 'header')) {
             $auth                  = $request->header('authorization');
@@ -265,6 +281,37 @@ class TransactionRetrier
         // Non-retryable errors rethrow outside this helper; only log when retries are exhausted.
     }
 
+    protected static function logAttempt(array $entry, string $logFileName): void
+    {
+        if (! static::isDatabaseLoggingEnabled()) {
+            return;
+        }
+
+        $entry['retryStatus'] = 'attempt';
+
+        TransactionRetryLogWriter::write(
+            $entry,
+            $logFileName,
+            static::configuredAttemptLogLevel()
+        );
+    }
+
+    protected static function isDatabaseLoggingEnabled(): bool
+    {
+        if (! function_exists('config')) {
+            return false;
+        }
+
+        $logging = config('database-transaction-retry.logging', []);
+        if (! is_array($logging)) {
+            return true;
+        }
+
+        $driver = strtolower(trim((string) ($logging['driver'] ?? 'database')));
+
+        return $driver === '' || $driver === 'database' || $driver === 'db';
+    }
+
     protected static function pause(int $seconds): void
     {
         $overriddenSleep = 'DatabaseTransactions\\RetryHelper\\sleep';
@@ -299,6 +346,23 @@ class TransactionRetrier
             'success' => static::normalizeLogLevel($levels['success'] ?? null, $defaults['success']),
             'failure' => static::normalizeLogLevel($levels['failure'] ?? null, $defaults['failure']),
         ];
+    }
+
+    protected static function configuredAttemptLogLevel(): string
+    {
+        $default = 'warning';
+
+        if (! function_exists('config')) {
+            return $default;
+        }
+
+        $levels = config('database-transaction-retry.logging.levels', []);
+
+        if (! is_array($levels)) {
+            return $default;
+        }
+
+        return static::normalizeLogLevel($levels['attempt'] ?? null, $default);
     }
 
     protected static function normalizeLogLevel(?string $level, string $fallback): string

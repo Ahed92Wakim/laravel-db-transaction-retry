@@ -33,22 +33,26 @@ return [
     | Logging
     |--------------------------------------------------------------------------
     |
-    | Control how retry attempts are logged. Provide a `channel` to reuse any
-    | logging channel defined in your application, supply a `config` array to
-    | build a dedicated logger on the fly. When none are defined,
-    | the package will continue to emit dated single-file logs per prior
-    | behaviour.
+    | Control how retry attempts are recorded. Set `driver` to "database" to
+    | persist retry events to the transaction_retry_events table (publish and
+    | run the migration), or "log" to keep file/channel logging. Provide a
+    | `channel` to reuse any logging channel defined in your application, or
+    | supply a `config` array to build a dedicated logger on the fly.
     |
     */
 
     'log_file_name' => env('DB_TRANSACTION_RETRY_LOG_FILE', 'database/transaction-retries'),
 
     'logging' => [
+        'driver'  => env('DB_TRANSACTION_RETRY_LOG_DRIVER', 'database'),
+        'table'   => env('DB_TRANSACTION_RETRY_LOG_TABLE', 'transaction_retry_events'),
         'channel' => env('DB_TRANSACTION_RETRY_LOG_CHANNEL'),
+        'config'  => [],
 
         'levels' => [
             'success' => env('DB_TRANSACTION_RETRY_LOG_SUCCESS_LEVEL', 'warning'),
             'failure' => env('DB_TRANSACTION_RETRY_LOG_FAILURE_LEVEL', 'error'),
+            'attempt' => env('DB_TRANSACTION_RETRY_LOG_ATTEMPT_LEVEL', 'warning'),
         ],
     ],
 

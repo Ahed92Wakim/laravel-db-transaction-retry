@@ -25,6 +25,11 @@ beforeEach(function (): void {
     $this->app->instance('db', $this->database);
     $this->app->instance('log', $this->logManager);
 
+    Container::getInstance()->make('config')->set(
+        'database-transaction-retry.logging.driver',
+        'log'
+    );
+
     SleepSpy::reset();
     RetryToggle::enable();
 });
@@ -120,6 +125,41 @@ test('retries on deadlock and logs warning', function (): void {
     expect($record['context']['exceptionClass'])->toBe(QueryException::class);
     expect($record['context']['sqlState'])->toBe('40001');
     expect($record['context']['driverCode'])->toBe(1213);
+});
+
+test('persists retry event to database when database driver configured', function (): void {
+    Container::getInstance()->make('config')->set(
+        'database-transaction-retry.logging.driver',
+        'database'
+    );
+
+    $attempts = 0;
+
+    $result = TransactionRetrier::runWithRetry(function () use (&$attempts) {
+        $attempts++;
+
+        if ($attempts === 1) {
+            throw makeQueryException(1213);
+        }
+
+        return 'ok';
+    }, maxRetries: 2, retryDelay: 1, trxLabel: 'db-log');
+
+    expect($result)->toBe('ok');
+    expect($this->database->insertedRows)->toHaveCount(2);
+
+    $attemptInsert = $this->database->insertedRows[0];
+    expect($attemptInsert['table'])->toBe('transaction_retry_events');
+    expect($attemptInsert['row']['retry_status'])->toBe('attempt');
+    expect($attemptInsert['row']['log_level'])->toBe('warning');
+    expect($attemptInsert['row']['trx_label'])->toBe('db-log');
+    expect($attemptInsert['row']['exception_class'])->toBe(QueryException::class);
+    expect($attemptInsert['row']['driver_code'])->toBe(1213);
+    expect($attemptInsert['row']['sql_state'])->toBe('40001');
+
+    $successInsert = $this->database->insertedRows[1];
+    expect($successInsert['row']['retry_status'])->toBe('success');
+    expect($successInsert['row']['log_level'])->toBe('warning');
 });
 
 test('uses configured success log level for retry logging', function (): void {
@@ -490,6 +530,8 @@ final class FakeDatabaseManager
     public int $transactionCalls = 0;
     /** @var list<array{0:string,1:array}> */
     public array $statementCalls = [];
+    /** @var list<array{table:string,row:array}> */
+    public array $insertedRows = [];
     private FakeConnection $connection;
 
     public function __construct(?FakeConnection $connection = null)
@@ -514,6 +556,11 @@ final class FakeDatabaseManager
         $this->statementCalls[] = [$query, $bindings];
 
         return $this->connection()->statement($query, $bindings);
+    }
+
+    public function table(string $table): FakeTable
+    {
+        return new FakeTable($this, $table);
     }
 
     public function getConnection(): FakeConnection
@@ -557,6 +604,34 @@ final class FakeQueryGrammar
         }
 
         return $query;
+    }
+}
+
+final class FakeTable
+{
+    public function __construct(
+        private FakeDatabaseManager $manager,
+        private string $table
+    ) {
+    }
+
+    public function insert(array $row): bool
+    {
+        if ($row === []) {
+            return true;
+        }
+
+        if (array_is_list($row) && isset($row[0]) && is_array($row[0])) {
+            foreach ($row as $item) {
+                $this->manager->insertedRows[] = ['table' => $this->table, 'row' => $item];
+            }
+
+            return true;
+        }
+
+        $this->manager->insertedRows[] = ['table' => $this->table, 'row' => $row];
+
+        return true;
     }
 }
 
