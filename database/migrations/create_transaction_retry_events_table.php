@@ -64,7 +64,7 @@ return new class () extends Migration {
 
         $partitions   = [];
         $partitions[] = sprintf(
-            "PARTITION p_history VALUES LESS THAN ('%s')",
+            "PARTITION p_history VALUES LESS THAN (UNIX_TIMESTAMP('%s'))",
             $start->format('Y-m-d H:i:s')
         );
 
@@ -72,7 +72,7 @@ return new class () extends Migration {
         for ($i = 0; $i < $hoursAhead; $i++) {
             $boundary     = $start->modify('+' . ($i + 1) . ' hours');
             $partitions[] = sprintf(
-                "PARTITION p_%s VALUES LESS THAN ('%s')",
+                "PARTITION p_%s VALUES LESS THAN (UNIX_TIMESTAMP('%s'))",
                 $boundary->format('YmdH'),
                 $boundary->format('Y-m-d H:i:s')
             );
@@ -81,7 +81,7 @@ return new class () extends Migration {
         $partitions[] = 'PARTITION p_max VALUES LESS THAN (MAXVALUE)';
 
         $sql = sprintf(
-            'ALTER TABLE `%s` PARTITION BY RANGE COLUMNS (created_at) (%s)',
+            'ALTER TABLE `%s` PARTITION BY RANGE (UNIX_TIMESTAMP(created_at)) (%s)',
             'transaction_retry_events',
             implode(', ', $partitions)
         );

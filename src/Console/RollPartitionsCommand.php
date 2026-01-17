@@ -24,20 +24,20 @@ class RollPartitionsCommand extends Command
             return self::SUCCESS;
         }
 
-        $table = trim((string) $this->option('table'));
+        $table = trim((string)$this->option('table'));
         if ($table === '') {
             $this->error('Table option cannot be empty.');
 
             return self::FAILURE;
         }
 
-        if (! Schema::connection($connection->getName())->hasTable($table)) {
+        if (!Schema::connection($connection->getName())->hasTable($table)) {
             $this->error("Table not found: {$table}");
 
             return self::FAILURE;
         }
 
-        $hours = (int) $this->option('hours');
+        $hours = (int)$this->option('hours');
         if ($hours < 1) {
             $this->error('Hours option must be 1 or greater.');
 
@@ -46,7 +46,7 @@ class RollPartitionsCommand extends Command
 
         $database   = $connection->getDatabaseName();
         $partitions = DB::select(
-            'SELECT PARTITION_NAME, PARTITION_DESCRIPTION FROM information_schema.PARTITIONS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?',
+            'SELECT PARTITION_NAME, PARTITION_DESCRIPTION, FROM_UNIXTIME(PARTITION_DESCRIPTION, "%Y-%m-%d %H:%i:%s") as candidate FROM information_schema.PARTITIONS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?',
             [$database, $table]
         );
 
@@ -56,17 +56,18 @@ class RollPartitionsCommand extends Command
         foreach ($partitions as $partition) {
             $name        = $partition->PARTITION_NAME        ?? null;
             $description = $partition->PARTITION_DESCRIPTION ?? null;
+            $candidate   = $partition->candidate             ?? null;
 
             if (is_null($name) || is_null($description)) {
                 continue;
             }
 
-            if (strtoupper((string) $description) === 'MAXVALUE') {
+            if (strtoupper((string)$description) === 'MAXVALUE') {
                 $hasMax = true;
                 continue;
             }
 
-            $candidate = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', (string) $description);
+            $candidate = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', (string)$candidate);
             if ($candidate === false) {
                 continue;
             }
@@ -76,7 +77,7 @@ class RollPartitionsCommand extends Command
             }
         }
 
-        if (! $hasMax) {
+        if (!$hasMax) {
             $this->error('Partition p_max not found. Ensure the table was created with a MAXVALUE partition.');
 
             return self::FAILURE;
@@ -89,7 +90,7 @@ class RollPartitionsCommand extends Command
         }
 
         $now    = new DateTimeImmutable('now');
-        $target = $now->setTime((int) $now->format('H'), 0, 0)->modify('+' . $hours . ' hours');
+        $target = $now->setTime((int)$now->format('H'), 0, 0)->modify('+' . $hours . ' hours');
 
         $boundaries = [];
         $boundary   = $maxBoundary;
@@ -108,7 +109,7 @@ class RollPartitionsCommand extends Command
         $definitions = [];
         foreach ($boundaries as $item) {
             $definitions[] = sprintf(
-                "PARTITION p_%s VALUES LESS THAN ('%s')",
+                "PARTITION p_%s VALUES LESS THAN (UNIX_TIMESTAMP('%s'))",
                 $item->format('YmdH'),
                 $item->format('Y-m-d H:i:s')
             );

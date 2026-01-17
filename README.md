@@ -87,6 +87,27 @@ php artisan vendor:publish --tag=database-transaction-retry-config
 - `retryable_exceptions.driver_error_codes` lists driver-specific error codes (defaults to `1213` deadlocks and `1205` lock wait timeouts). Including `1205` not only enables retries but also activates the optional session lock wait timeout override when configured.
 - `retryable_exceptions.classes` lets you specify fully-qualified exception class names that should always be retried.
 
+## Database Migration
+
+If you want to persist retry events, publish the migration and run it:
+
+```bash
+php artisan vendor:publish --tag=database-transaction-retry-migrations
+php artisan migrate
+```
+
+## Partition Maintenance (MySQL)
+
+The migration creates hourly partitions for MySQL. Keep partitions rolling by scheduling the command to run hourly:
+
+```php
+use Illuminate\Support\Facades\Schedule;
+
+Schedule::command('db-transaction-retry:roll-partitions')->hourly();
+```
+
+Make sure your scheduler is running (for example, the standard `schedule:run` cron).
+
 ## Retry Conditions
 
 Retries are attempted when the caught exception matches one of the configured conditions:

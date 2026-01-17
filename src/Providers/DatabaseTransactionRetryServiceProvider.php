@@ -33,8 +33,8 @@ class DatabaseTransactionRetryServiceProvider extends ServiceProvider
             ], 'database-transaction-retry-config');
 
             $this->publishes([
-                __DIR__ . '/../../database/migrations/create_transaction_retry_events.php' => $this->app->databasePath(
-                    'migrations/' . date('Y_m_d_His') . '_create_transaction_retry_events.php'
+                __DIR__ . '/../../database/migrations/create_transaction_retry_events_table.php' => $this->app->databasePath(
+                    'migrations/' . date('Y_m_d_His') . '_create_transaction_retry_events_table.php'
                 ),
             ], 'database-transaction-retry-migrations');
 
@@ -43,12 +43,6 @@ class DatabaseTransactionRetryServiceProvider extends ServiceProvider
                 StartRetryCommand::class,
                 StopRetryCommand::class,
             ]);
-
-            $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
-                $schedule
-                    ->command('db-transaction-retry:roll-partitions --hours=24 --table=transaction_retry_events')
-                    ->hourly();
-            });
         }
     }
 }
