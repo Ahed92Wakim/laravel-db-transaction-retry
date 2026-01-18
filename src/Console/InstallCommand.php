@@ -8,7 +8,7 @@ class InstallCommand extends Command
 {
     protected $signature = 'db-transaction-retry:install {--force : Overwrite any existing files}';
 
-    protected $description = 'Publish the database transaction retry config and migration.';
+    protected $description = 'Publish the database transaction retry config, migration, and dashboard.';
 
     public function handle(): int
     {
@@ -21,6 +21,11 @@ class InstallCommand extends Command
 
         $this->call('vendor:publish', [
             '--tag' => 'database-transaction-retry-migrations',
+            '--force' => $force,
+        ]);
+
+        $this->call('vendor:publish', [
+            '--tag' => 'database-transaction-retry-dashboard',
             '--force' => $force,
         ]);
 

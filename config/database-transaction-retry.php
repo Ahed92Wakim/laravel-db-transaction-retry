@@ -58,6 +58,41 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Dashboard
+    |--------------------------------------------------------------------------
+    |
+    | Configure the embedded dashboard UI and API endpoints. The UI is served
+    | from the published static assets under the configured path, while the
+    | API routes are protected by the same gate by default.
+    |
+    */
+
+    'dashboard' => [
+        'enabled' => env('DB_TRANSACTION_RETRY_DASHBOARD_ENABLED', true),
+        'path'    => env('DB_TRANSACTION_RETRY_DASHBOARD_PATH', 'transaction-retry'),
+        'gate'    => env('DB_TRANSACTION_RETRY_DASHBOARD_GATE', 'viewTransactionRetryDashboard'),
+
+        'middleware' => [
+            'web',
+            'auth',
+            DatabaseTransactions\RetryHelper\Http\Middleware\AuthorizeTransactionRetryDashboard::class,
+        ],
+
+        'allowed_emails' => array_filter(explode(',', (string) env('DB_TRANSACTION_RETRY_DASHBOARD_EMAILS', ''))),
+    ],
+
+    'api' => [
+        'enabled'    => env('DB_TRANSACTION_RETRY_API_ENABLED', true),
+        'prefix'     => env('DB_TRANSACTION_RETRY_API_PREFIX', 'api/transaction-retry'),
+        'middleware' => [
+            'api',
+            'auth',
+            DatabaseTransactions\RetryHelper\Http\Middleware\AuthorizeTransactionRetryDashboard::class,
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Retryable Exceptions
     |--------------------------------------------------------------------------
     |
