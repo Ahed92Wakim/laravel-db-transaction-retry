@@ -1,6 +1,9 @@
 <?php
 
+use DatabaseTransactions\RetryHelper\Http\Controllers\TransactionRetryEventController;
 use Illuminate\Support\Facades\Route;
+
+$apiEnabled = (bool) config('database-transaction-retry.api.enabled', true);
 
 Route::middleware(config('database-transaction-retry.dashboard.middleware', []))
     ->prefix(trim((string) config('database-transaction-retry.dashboard.path', 'transaction-retry'), '/'))
@@ -25,3 +28,22 @@ Route::middleware(config('database-transaction-retry.dashboard.middleware', []))
             return response()->file($indexPath, ['Content-Type' => 'text/html; charset=UTF-8']);
         })->where('path', '.*');
     });
+
+if ($apiEnabled) {
+    $middleware = config('database-transaction-retry.api.middleware', []);
+    $middleware = is_array($middleware) ? $middleware : [];
+    $middleware = array_values(array_filter($middleware, static fn ($value) => $value !== null && $value !== ''));
+
+    if (in_array('auth', $middleware, true) && ! in_array('web', $middleware, true)) {
+        array_unshift($middleware, 'web');
+    }
+
+    Route::middleware($middleware)
+        ->prefix(trim((string) config('database-transaction-retry.api.prefix', 'api/transaction-retry'), '/'))
+        ->group(function (): void {
+            Route::get('events', [TransactionRetryEventController::class, 'index']);
+            Route::get('events/{id}', [TransactionRetryEventController::class, 'show'])->whereNumber('id');
+            Route::get('metrics/today', [TransactionRetryEventController::class, 'today']);
+            Route::get('metrics/traffic', [TransactionRetryEventController::class, 'traffic']);
+        });
+}

@@ -6,7 +6,6 @@ use DatabaseTransactions\RetryHelper\Console\InstallCommand;
 use DatabaseTransactions\RetryHelper\Console\RollPartitionsCommand;
 use DatabaseTransactions\RetryHelper\Console\StartRetryCommand;
 use DatabaseTransactions\RetryHelper\Console\StopRetryCommand;
-use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 
@@ -68,12 +67,11 @@ class DatabaseTransactionRetryServiceProvider extends ServiceProvider
             return;
         }
 
-        if ((bool) config('database-transaction-retry.dashboard.enabled', true)) {
-            $this->loadRoutesFrom(__DIR__ . '/../../routes/web.php');
-        }
+        $dashboardEnabled = (bool) config('database-transaction-retry.dashboard.enabled', true);
+        $apiEnabled       = (bool) config('database-transaction-retry.api.enabled', true);
 
-        if ((bool) config('database-transaction-retry.api.enabled', true)) {
-            $this->loadRoutesFrom(__DIR__ . '/../../routes/api.php');
+        if ($dashboardEnabled || $apiEnabled) {
+            $this->loadRoutesFrom(__DIR__ . '/../../routes/web.php');
         }
     }
 
@@ -89,6 +87,10 @@ class DatabaseTransactionRetryServiceProvider extends ServiceProvider
         }
 
         Gate::define($gate, function ($user = null): bool {
+            if (! $user) {
+                return false;
+            }
+
             $allowed = config('database-transaction-retry.dashboard.allowed_emails', []);
             if (is_array($allowed) && ! empty($allowed)) {
                 $email = is_object($user) && property_exists($user, 'email') ? $user->email : null;
@@ -96,7 +98,7 @@ class DatabaseTransactionRetryServiceProvider extends ServiceProvider
                 return is_string($email) && in_array($email, $allowed, true);
             }
 
-            return app()->environment('local');
+            return true;
         });
     }
 }

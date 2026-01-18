@@ -12,7 +12,13 @@ class AuthorizeTransactionRetryDashboard
     public function handle(Request $request, Closure $next): Response
     {
         $gate = (string) config('database-transaction-retry.dashboard.gate', 'viewTransactionRetryDashboard');
-        if ($gate !== '' && Gate::denies($gate)) {
+        $user = $request->user();
+
+        if (! $user) {
+            abort(401);
+        }
+
+        if ($gate !== '' && Gate::forUser($user)->denies($gate)) {
             abort(403);
         }
 

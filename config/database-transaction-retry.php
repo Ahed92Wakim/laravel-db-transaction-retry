@@ -85,7 +85,7 @@ return [
         'enabled'    => env('DB_TRANSACTION_RETRY_API_ENABLED', true),
         'prefix'     => env('DB_TRANSACTION_RETRY_API_PREFIX', 'api/transaction-retry'),
         'middleware' => [
-            'api',
+            'web',
             'auth',
             DatabaseTransactions\RetryHelper\Http\Middleware\AuthorizeTransactionRetryDashboard::class,
         ],
