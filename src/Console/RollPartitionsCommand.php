@@ -9,9 +9,9 @@ use Illuminate\Support\Facades\Schema;
 
 class RollPartitionsCommand extends Command
 {
-    protected $signature = 'db-transaction-retry:roll-partitions {--hours=24 : Hours ahead to ensure partitions exist} {--table=transaction_retry_events : Table name to partition}';
+    protected $signature = 'db-transaction-retry:roll-partitions {--hours=24 : Hours ahead to ensure partitions exist} {--table= : Table name to partition}';
 
-    protected $description = 'Create hourly MySQL partitions ahead of current time for transaction retry events.';
+    protected $description = 'Create hourly MySQL partitions ahead of current time for transaction log tables.';
 
     public function handle(): int
     {
@@ -26,7 +26,10 @@ class RollPartitionsCommand extends Command
 
         $table = trim((string)$this->option('table'));
         if ($table === '') {
-            $this->error('Table option cannot be empty.');
+            $table = $this->resolveLogTable();
+        }
+        if ($table === '') {
+            $this->error('Table option cannot be empty and no log table is configured.');
 
             return self::FAILURE;
         }
@@ -128,5 +131,22 @@ class RollPartitionsCommand extends Command
         $this->info('Partitions rolled successfully.');
 
         return self::SUCCESS;
+    }
+
+    private function resolveLogTable(): string
+    {
+        if (! function_exists('config')) {
+            return '';
+        }
+
+        $table = config('database-transaction-retry.slow_transactions.log_table');
+
+        if (! is_string($table)) {
+            return '';
+        }
+
+        $table = trim($table);
+
+        return $table === '' ? '' : $table;
     }
 }

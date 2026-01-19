@@ -8,9 +8,10 @@ use Illuminate\Support\Facades\Schema;
 return new class () extends Migration {
     public function up(): void
     {
-        $isMysql = Schema::getConnection()->getDriverName() === 'mysql';
+        $tableName = $this->resolveTableName();
+        $isMysql   = Schema::getConnection()->getDriverName() === 'mysql';
 
-        Schema::create('transaction_retry_events', function (Blueprint $table) use ($isMysql): void {
+        Schema::create($tableName, function (Blueprint $table) use ($isMysql): void {
             if ($isMysql) {
                 $table->unsignedBigInteger('id', true);
                 $table->timestamp('created_at')->useCurrent();
@@ -48,16 +49,16 @@ return new class () extends Migration {
         });
 
         if ($isMysql) {
-            $this->addHourlyPartitions();
+            $this->addHourlyPartitions($tableName);
         }
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('transaction_retry_events');
+        Schema::dropIfExists($this->resolveTableName());
     }
 
-    private function addHourlyPartitions(): void
+    private function addHourlyPartitions(string $tableName): void
     {
         $now   = new DateTimeImmutable('now');
         $start = $now->setTime((int) $now->format('H'), 0, 0);
@@ -82,10 +83,29 @@ return new class () extends Migration {
 
         $sql = sprintf(
             'ALTER TABLE `%s` PARTITION BY RANGE (UNIX_TIMESTAMP(created_at)) (%s)',
-            'transaction_retry_events',
+            $tableName,
             implode(', ', $partitions)
         );
 
         DB::statement($sql);
+    }
+
+    private function resolveTableName(): string
+    {
+        $default = 'transaction_retry_events';
+
+        if (! function_exists('config')) {
+            return $default;
+        }
+
+        $table = config('database-transaction-retry.logging.table', $default);
+
+        if (! is_string($table)) {
+            return $default;
+        }
+
+        $table = trim($table);
+
+        return $table === '' ? $default : $table;
     }
 };

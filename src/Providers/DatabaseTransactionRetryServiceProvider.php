@@ -6,6 +6,11 @@ use DatabaseTransactions\RetryHelper\Console\InstallCommand;
 use DatabaseTransactions\RetryHelper\Console\RollPartitionsCommand;
 use DatabaseTransactions\RetryHelper\Console\StartRetryCommand;
 use DatabaseTransactions\RetryHelper\Console\StopRetryCommand;
+use DatabaseTransactions\RetryHelper\Support\SlowTransactionMonitor;
+use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Database\Events\TransactionBeginning;
+use Illuminate\Database\Events\TransactionCommitted;
+use Illuminate\Database\Events\TransactionRolledBack;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 
@@ -26,6 +31,7 @@ class DatabaseTransactionRetryServiceProvider extends ServiceProvider
     {
         $this->registerDashboardGate();
         $this->registerRoutes();
+        $this->registerSlowTransactionMonitor();
 
         if ($this->app->runningInConsole()) {
             $configPath = function_exists('config_path')
@@ -37,9 +43,10 @@ class DatabaseTransactionRetryServiceProvider extends ServiceProvider
             ], 'database-transaction-retry-config');
 
             $this->publishes([
-                __DIR__ . '/../../database/migrations/2025_01_17_000000_create_transaction_retry_events_table.php' => $this->app->databasePath(
-                    'migrations/2025_01_17_000000_create_transaction_retry_events_table.php'
-                ),
+                __DIR__ . '/../../database/migrations/2025_01_17_000000_create_transaction_retry_events_table.php'
+                    => $this->app->databasePath('migrations/2025_01_17_000000_create_transaction_retry_events_table.php'),
+                __DIR__ . '/../../database/migrations/2025_01_17_000001_create_db_transaction_logs_tables.php'
+                    => $this->app->databasePath('migrations/2025_01_17_000001_create_db_transaction_logs_tables.php'),
             ], 'database-transaction-retry-migrations');
 
             $dashboardPath = trim((string) config('database-transaction-retry.dashboard.path', 'transaction-retry'), '/');
@@ -99,6 +106,44 @@ class DatabaseTransactionRetryServiceProvider extends ServiceProvider
             }
 
             return true;
+        });
+    }
+
+    protected function registerSlowTransactionMonitor(): void
+    {
+        if (! function_exists('config')) {
+            return;
+        }
+
+        $config = config('database-transaction-retry.slow_transactions', []);
+        if (! is_array($config) || ! ($config['enabled'] ?? true)) {
+            return;
+        }
+
+        if (! $this->app->bound('events')) {
+            return;
+        }
+
+        $this->app->singleton(SlowTransactionMonitor::class, static function () use ($config): SlowTransactionMonitor {
+            return new SlowTransactionMonitor($config);
+        });
+
+        $events = $this->app['events'];
+
+        $events->listen(TransactionBeginning::class, function ($event): void {
+            $this->app->make(SlowTransactionMonitor::class)->handleTransactionBeginning($event);
+        });
+
+        $events->listen(TransactionCommitted::class, function ($event): void {
+            $this->app->make(SlowTransactionMonitor::class)->handleTransactionCommitted($event);
+        });
+
+        $events->listen(TransactionRolledBack::class, function ($event): void {
+            $this->app->make(SlowTransactionMonitor::class)->handleTransactionRolledBack($event);
+        });
+
+        $events->listen(QueryExecuted::class, function ($event): void {
+            $this->app->make(SlowTransactionMonitor::class)->handleQueryExecuted($event);
         });
     }
 }

@@ -58,6 +58,28 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Slow Transaction Monitoring
+    |--------------------------------------------------------------------------
+    |
+    | Track slow database transactions and persist summary data for analysis.
+    | Configure thresholds in milliseconds and the tables that store summaries
+    | and slow queries. Logging can also write to the default or named channel.
+    |
+    */
+
+    'slow_transactions' => [
+        'enabled'                  => env('DB_SLOW_TRANSACTION_ENABLED', true),
+        'transaction_threshold_ms' => (int) env('DB_SLOW_TRANSACTION_THRESHOLD_MS', 1),
+        'slow_query_threshold_ms'  => (int) env('DB_SLOW_TRANSACTION_QUERY_THRESHOLD_MS', 1),
+        'log_table'                => env('DB_SLOW_TRANSACTION_LOG_TABLE', 'db_transaction_logs'),
+        'query_table'              => env('DB_SLOW_TRANSACTION_QUERY_TABLE', 'db_transaction_queries'),
+        'log_connection'           => env('DB_SLOW_TRANSACTION_LOG_CONNECTION'),
+        'log_enabled'              => env('DB_SLOW_TRANSACTION_LOG_ENABLED', true),
+        'log_channel'              => env('DB_SLOW_TRANSACTION_LOG_CHANNEL'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Dashboard
     |--------------------------------------------------------------------------
     |
