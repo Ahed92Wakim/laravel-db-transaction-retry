@@ -3,6 +3,8 @@
 namespace DatabaseTransactions\RetryHelper\Services;
 
 use Closure;
+use DatabaseTransactions\RetryHelper\Enums\LogLevel;
+use DatabaseTransactions\RetryHelper\Enums\RetryStatus;
 use DatabaseTransactions\RetryHelper\Support\BindingStringifier;
 use DatabaseTransactions\RetryHelper\Support\RetryToggle;
 use DatabaseTransactions\RetryHelper\Support\TraceFormatter;
@@ -51,8 +53,9 @@ class TransactionRetrier
         $retryDelay = max(1, $retryDelay);
         $trxLabel   = $trxLabel ?? '';
 
-        $attempt    = 0;
-        $logEntries = [];
+        $retryGroupId = static::generateRetryGroupId();
+        $attempt      = 0;
+        $logEntries   = [];
 
         while ($attempt < $maxRetries) {
             $throwable        = null;
@@ -72,7 +75,7 @@ class TransactionRetrier
 
                 if ($shouldRetryError) {
                     $attempt++;
-                    $entry        = static::makeRetryContext($exception, $attempt, $maxRetries, $trxLabel);
+                    $entry        = static::makeRetryContext($exception, $attempt, $maxRetries, $trxLabel, $retryGroupId);
                     $logEntries[] = $entry;
 
                     static::logAttempt($entry, $logFileName);
@@ -154,12 +157,18 @@ class TransactionRetrier
         return false;
     }
 
-    protected static function makeRetryContext(Throwable $throwable, int $attempt, int $maxRetries, string $trxLabel): array
-    {
+    protected static function makeRetryContext(
+        Throwable $throwable,
+        int $attempt,
+        int $maxRetries,
+        string $trxLabel,
+        string $retryGroupId
+    ): array {
         $context = [
             'attempt'        => $attempt,
             'maxRetries'     => $maxRetries,
             'trxLabel'       => $trxLabel,
+            'retryGroupId'   => $retryGroupId,
             'exceptionClass' => get_class($throwable),
         ];
 
@@ -206,6 +215,7 @@ class TransactionRetrier
             'routeName' => null,
             'token'     => null,
             'userId'    => null,
+            'userType'  => null,
         ];
 
         if (! function_exists('request') || ! app()->bound('request')) {
@@ -231,11 +241,27 @@ class TransactionRetrier
             $data['authHeaderLen'] = $auth ? strlen($auth) : null;
         }
 
-        $data['userId'] = method_exists($request, 'user') && $request->user()
-            ? ($request->user()->id ?? null)
-            : null;
+        $user = method_exists($request, 'user') ? $request->user() : null;
+        if (is_object($user)) {
+            $data['userType'] = get_class($user);
+
+            if (method_exists($user, 'getAuthIdentifier')) {
+                $data['userId'] = $user->getAuthIdentifier();
+            } elseif (isset($user->id)) {
+                $data['userId'] = $user->id;
+            }
+        }
 
         return $data;
+    }
+
+    protected static function generateRetryGroupId(): string
+    {
+        try {
+            return bin2hex(random_bytes(16));
+        } catch (Throwable) {
+            return uniqid('trx_', true);
+        }
     }
 
     /**
@@ -263,7 +289,7 @@ class TransactionRetrier
         if (is_null($throwable) && ! $exceptionCaught) {
             if (count($logEntries) > 0) {
                 $entry                = $logEntries[count($logEntries) - 1];
-                $entry['retryStatus'] = 'success';
+                $entry['retryStatus'] = RetryStatus::Success->value;
 
                 TransactionRetryLogWriter::write($entry, $logFileName, $levels['success']);
             }
@@ -273,7 +299,7 @@ class TransactionRetrier
 
         if (! is_null($throwable) && $shouldRetryError && count($logEntries) > 0) {
             $entry                = $logEntries[count($logEntries) - 1];
-            $entry['retryStatus'] = 'failure';
+            $entry['retryStatus'] = RetryStatus::Failure->value;
 
             TransactionRetryLogWriter::write($entry, $logFileName, $levels['failure']);
         }
@@ -287,7 +313,7 @@ class TransactionRetrier
             return;
         }
 
-        $entry['retryStatus'] = 'attempt';
+        $entry['retryStatus'] = RetryStatus::Attempt->value;
 
         TransactionRetryLogWriter::write(
             $entry,
@@ -367,9 +393,9 @@ class TransactionRetrier
 
     protected static function normalizeLogLevel(?string $level, string $fallback): string
     {
-        $candidate = is_string($level) ? strtolower(trim($level)) : null;
+        $normalizedFallback = LogLevel::normalize($fallback, LogLevel::Error->value);
 
-        return $candidate !== '' ? $candidate : $fallback;
+        return LogLevel::normalize($level, $normalizedFallback);
     }
 
     protected static function applyLockWaitTimeout(array $config): void

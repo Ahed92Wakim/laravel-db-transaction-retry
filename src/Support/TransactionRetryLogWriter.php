@@ -2,6 +2,8 @@
 
 namespace DatabaseTransactions\RetryHelper\Support;
 
+use DatabaseTransactions\RetryHelper\Enums\LogLevel;
+use DatabaseTransactions\RetryHelper\Enums\RetryStatus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Psr\Log\LoggerInterface;
@@ -29,8 +31,13 @@ class TransactionRetryLogWriter
         $label    = (string) ($context['trxLabel'] ?? '');
 
         $normalizedLevel = static::normalizeLevel($level, $levels['failure']);
-        $status          = strtolower((string) ($context['retryStatus'] ?? ($normalizedLevel === $levels['success'] ? 'success' : 'failure')));
-        $statusLabel     = strtoupper($status === 'success' ? 'SUCCESS' : 'FAILED');
+        $defaultStatus   = $normalizedLevel === $levels['success']
+                ? RetryStatus::Success->value
+                : RetryStatus::Failure->value;
+        $status      = RetryStatus::normalize($context['retryStatus'] ?? null, $defaultStatus);
+        $statusLabel = strtoupper(
+            $status === RetryStatus::Success->value ? 'SUCCESS' : 'FAILED'
+        );
 
         $exceptionClass = (string) ($context['exceptionClass'] ?? 'UnknownException');
         $sqlState       = (string) ($context['sqlState'] ?? '');
@@ -65,16 +72,15 @@ class TransactionRetryLogWriter
         $levels  = static::configuredLevels();
 
         $normalizedLevel = static::normalizeLevel($level, $levels['failure']);
-        $status          = strtolower((string) ($context['retryStatus'] ?? ''));
-        $allowedStatuses = ['success', 'failure', 'attempt'];
+        $defaultStatus   = $normalizedLevel === $levels['success']
+                ? RetryStatus::Success->value
+                : RetryStatus::Failure->value;
+        $status = RetryStatus::normalize($context['retryStatus'] ?? null, $defaultStatus);
 
-        if (! in_array($status, $allowedStatuses, true)) {
-            $status = $normalizedLevel === $levels['success'] ? 'success' : 'failure';
-        }
-
-        $attempts = (int) ($context['attempt'] ?? 0);
-        $max      = (int) ($context['maxRetries'] ?? 0);
-        $label    = (string) ($context['trxLabel'] ?? '');
+        $attempts     = (int) ($context['attempt'] ?? 0);
+        $max          = (int) ($context['maxRetries'] ?? 0);
+        $label        = (string) ($context['trxLabel'] ?? '');
+        $retryGroupId = (string) ($context['retryGroupId'] ?? ($context['retry_group_id'] ?? ''));
 
         $exceptionClass = (string) ($context['exceptionClass'] ?? '');
         $sqlState       = strtoupper((string) ($context['sqlState'] ?? ''));
@@ -87,10 +93,20 @@ class TransactionRetryLogWriter
         $routeName     = $context['routeName']     ?? ($context['route_name'] ?? null);
         $url           = $context['url']           ?? null;
         $userId        = $context['userId']        ?? null;
+        $userType      = $context['userType']      ?? ($context['user_type'] ?? null);
         $authHeaderLen = $context['authHeaderLen'] ?? null;
 
-        $userIdValue        = is_null($userId)        || ! is_numeric($userId) ? null : (int) $userId;
-        $authHeaderLenValue = is_null($authHeaderLen) || ! is_numeric($authHeaderLen) ? null : (int) $authHeaderLen;
+        $userIdValue = is_null($userId)
+            ? null
+            : (is_scalar($userId) || (is_object($userId) && method_exists($userId, '__toString'))
+                ? (string) $userId
+                : null);
+        $userTypeValue = is_null($userType)
+            ? null
+            : (is_scalar($userType) || (is_object($userType) && method_exists($userType, '__toString'))
+                ? (string) $userType
+                : null);
+        $authHeaderLenValue = ! is_numeric($authHeaderLen) ? null : (int) $authHeaderLen;
 
         $occurredAt = function_exists('now') ? now() : date('Y-m-d H:i:s');
 
@@ -110,14 +126,21 @@ class TransactionRetryLogWriter
             $method,
             $url,
             $routeName,
-            $userId,
+            $userIdValue,
+            $userTypeValue,
         ]);
+
+        if ($retryGroupId === '') {
+            $retryGroupId = $eventHash ?? (static::hashFromParts([$occurredAt, $label]) ?? 'unknown');
+        }
 
         $contextPayload = $context;
         foreach ([
             'attempt',
             'maxRetries',
             'trxLabel',
+            'retryGroupId',
+            'retry_group_id',
             'exceptionClass',
             'sqlState',
             'driverCode',
@@ -129,6 +152,8 @@ class TransactionRetryLogWriter
             'route_name',
             'url',
             'userId',
+            'userType',
+            'user_type',
             'authHeaderLen',
             'retryStatus',
         ] as $key) {
@@ -141,7 +166,8 @@ class TransactionRetryLogWriter
             'log_level'       => $normalizedLevel,
             'attempt'         => $attempts,
             'max_retries'     => $max,
-            'trx_label'       => $label          !== '' ? $label : null,
+            'trx_label'       => $label !== '' ? $label : null,
+            'retry_group_id'  => $retryGroupId,
             'exception_class' => $exceptionClass !== '' ? $exceptionClass : null,
             'sql_state'       => $sqlState       !== '' ? $sqlState : null,
             'driver_code'     => is_null($driverCode) ? null : (int) $driverCode,
@@ -152,6 +178,7 @@ class TransactionRetryLogWriter
             'route_name'      => is_null($routeName) ? null : (string) $routeName,
             'url'             => is_null($url) ? null : (string) $url,
             'user_id'         => $userIdValue,
+            'user_type'       => $userTypeValue,
             'auth_header_len' => $authHeaderLenValue,
             'route_hash'      => $routeHash,
             'query_hash'      => $queryHash,
@@ -312,8 +339,8 @@ class TransactionRetryLogWriter
 
     protected static function normalizeLevel(?string $level, string $fallback): string
     {
-        $candidate = is_string($level) ? strtolower(trim($level)) : null;
+        $normalizedFallback = LogLevel::normalize($fallback, LogLevel::Error->value);
 
-        return $candidate !== '' ? $candidate : $fallback;
+        return LogLevel::normalize($level, $normalizedFallback);
     }
 }

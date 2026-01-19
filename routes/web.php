@@ -45,5 +45,7 @@ if ($apiEnabled) {
             Route::get('events/{id}', [TransactionRetryEventController::class, 'show'])->whereNumber('id');
             Route::get('metrics/today', [TransactionRetryEventController::class, 'today']);
             Route::get('metrics/traffic', [TransactionRetryEventController::class, 'traffic']);
+            Route::get('metrics/routes', [TransactionRetryEventController::class, 'routes']);
+            Route::get('metrics/queries', [TransactionRetryEventController::class, 'queries']);
         });
 }

@@ -1,5 +1,7 @@
 <?php
 
+use DatabaseTransactions\RetryHelper\Enums\LogLevel;
+use DatabaseTransactions\RetryHelper\Enums\RetryStatus;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -22,11 +24,12 @@ return new class () extends Migration {
             }
 
             $table->timestamp('occurred_at')->nullable()->index();
-            $table->string('retry_status', 20)->nullable()->index();
-            $table->string('log_level', 20)->nullable()->index();
+            $table->enum('retry_status', RetryStatus::values())->nullable()->index();
+            $table->enum('log_level', LogLevel::values())->nullable()->index();
             $table->unsignedSmallInteger('attempt')->default(0);
             $table->unsignedSmallInteger('max_retries')->default(0);
             $table->string('trx_label', 120)->nullable()->index();
+            $table->string('retry_group_id', 64)->index();
             $table->string('exception_class', 255)->nullable()->index();
             $table->string('sql_state', 10)->nullable()->index();
             $table->unsignedInteger('driver_code')->nullable()->index();
@@ -36,7 +39,8 @@ return new class () extends Migration {
             $table->string('method', 10)->nullable()->index();
             $table->string('route_name', 255)->nullable()->index();
             $table->text('url')->nullable();
-            $table->unsignedBigInteger('user_id')->nullable()->index();
+            $table->string('user_type', 255)->nullable()->index();
+            $table->string('user_id', 64)->nullable()->index();
             $table->unsignedSmallInteger('auth_header_len')->nullable();
             $table->string('route_hash', 64)->nullable()->index();
             $table->string('query_hash', 64)->nullable()->index();
@@ -45,6 +49,7 @@ return new class () extends Migration {
 
             if ($isMysql) {
                 $table->primary(['id', 'created_at']);
+                $table->index('created_at');
             }
         });
 

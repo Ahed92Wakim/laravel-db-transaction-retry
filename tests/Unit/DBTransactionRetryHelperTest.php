@@ -122,6 +122,7 @@ test('retries on deadlock and logs warning', function (): void {
     expect($record['context']['attempt'])->toBe(1);
     expect($record['context']['maxRetries'])->toBe(3);
     expect($record['context']['trxLabel'])->toBe('orders');
+    expect($record['context']['retryGroupId'])->toBeString()->not->toBe('');
     expect($record['context']['exceptionClass'])->toBe(QueryException::class);
     expect($record['context']['sqlState'])->toBe('40001');
     expect($record['context']['driverCode'])->toBe(1213);
@@ -153,6 +154,7 @@ test('persists retry event to database when database driver configured', functio
     expect($attemptInsert['row']['retry_status'])->toBe('attempt');
     expect($attemptInsert['row']['log_level'])->toBe('warning');
     expect($attemptInsert['row']['trx_label'])->toBe('db-log');
+    expect($attemptInsert['row']['retry_group_id'])->toBeString()->not->toBe('');
     expect($attemptInsert['row']['exception_class'])->toBe(QueryException::class);
     expect($attemptInsert['row']['driver_code'])->toBe(1213);
     expect($attemptInsert['row']['sql_state'])->toBe('40001');
@@ -160,6 +162,7 @@ test('persists retry event to database when database driver configured', functio
     $successInsert = $this->database->insertedRows[1];
     expect($successInsert['row']['retry_status'])->toBe('success');
     expect($successInsert['row']['log_level'])->toBe('warning');
+    expect($successInsert['row']['retry_group_id'])->toBe($attemptInsert['row']['retry_group_id']);
 });
 
 test('uses configured success log level for retry logging', function (): void {

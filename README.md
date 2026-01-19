@@ -179,8 +179,9 @@ By default, retry events are stored in the `transaction_retry_events` table. Eac
 Each retry event stores:
 
 - Attempt count, maximum retries, transaction label, and retry status (attempt/success/failure).
+- A retry group ID to correlate attempts and the final outcome for a single transaction.
 - Exception class, SQLSTATE, driver error code, connection name, SQL, bindings, resolved raw SQL, and PDO error info when available.
-- A compacted stack trace and request URL, method, authorization header length, and authenticated user ID when the request helper is bound.
+- A compacted stack trace and request URL, method, authorization header length, and authenticated user ID/type (UUID or integer) when the request helper is bound.
 
 Set `logFileName` to segment logs by feature or workload (e.g., `logFileName: 'database/queues/payments'`) when using the log driver.
 

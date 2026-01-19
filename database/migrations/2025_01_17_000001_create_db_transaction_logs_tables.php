@@ -43,6 +43,7 @@ return new class () extends Migration {
 
             if ($isMysql) {
                 $table->primary(['id', 'completed_at']);
+                $table->index('completed_at');
             }
         });
 
