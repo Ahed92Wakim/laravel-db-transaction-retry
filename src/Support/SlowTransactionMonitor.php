@@ -8,7 +8,6 @@ use Illuminate\Database\Events\TransactionBeginning;
 use Illuminate\Database\Events\TransactionCommitted;
 use Illuminate\Database\Events\TransactionRolledBack;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Throwable;
 
@@ -20,8 +19,6 @@ class SlowTransactionMonitor
     private string $logTable;
     private string $queryTable;
     private ?string $logConnection;
-    private bool $logEnabled;
-    private ?string $logChannel;
     private ?bool $queryTableHasLogCompletedAt = null;
 
     public function __construct(array $config)
@@ -32,10 +29,6 @@ class SlowTransactionMonitor
         $this->queryTable             = trim((string) ($config['query_table'] ?? 'db_transaction_queries'));
         $this->logConnection          = isset($config['log_connection']) && $config['log_connection'] !== ''
             ? (string) $config['log_connection']
-            : null;
-        $this->logEnabled = (bool) ($config['log_enabled'] ?? true);
-        $this->logChannel = isset($config['log_channel']) && $config['log_channel'] !== ''
-            ? (string) $config['log_channel']
             : null;
     }
 
@@ -164,30 +157,6 @@ class SlowTransactionMonitor
 
         if (! is_null($logEntry) && $slowQueriesCount > 0) {
             $this->writeSlowQueries($logEntry, $slowQueries);
-        }
-
-        if ($this->logEnabled) {
-            $payload = [
-                'transaction_label'  => $context['transaction_label'] ?? null,
-                'connection'         => $connection,
-                'status'             => $status,
-                'elapsed_ms'         => $elapsedMs,
-                'elapsed_seconds'    => round($elapsedMs / 1000, 3),
-                'total_queries'      => $totalQueries,
-                'slow_queries_count' => $slowQueriesCount,
-                'route_name'         => $httpContext['route_name'] ?? null,
-                'method'             => $httpContext['method']     ?? null,
-                'url'                => $httpContext['url']        ?? null,
-                'ip_address'         => $httpContext['ip']         ?? null,
-                'user_id'            => $userId,
-                'slow_queries'       => $this->sortedSlowQueries($slowQueries),
-            ];
-
-            if ($status === 'rolled_back') {
-                $payload['last_query'] = $context['last_query'] ?? null;
-            }
-
-            $this->logMessage($status, $payload);
         }
     }
 
@@ -429,49 +398,4 @@ class SlowTransactionMonitor
         return $this->queryTableHasLogCompletedAt;
     }
 
-    private function sortedSlowQueries(array $slowQueries): array
-    {
-        usort($slowQueries, static function (array $left, array $right): int {
-            return (int) ($right['time_ms'] ?? 0) <=> (int) ($left['time_ms'] ?? 0);
-        });
-
-        return $slowQueries;
-    }
-
-    private function logMessage(string $status, array $payload): void
-    {
-        if (! class_exists(Log::class)) {
-            return;
-        }
-
-        $level   = $status === 'rolled_back' ? 'error' : 'warning';
-        $message = $this->formatMessage($status, $payload);
-
-        try {
-            if ($this->logChannel) {
-                Log::channel($this->logChannel)->log($level, $message, $payload);
-            } else {
-                Log::log($level, $message, $payload);
-            }
-        } catch (Throwable) {
-            // Avoid breaking the request flow if logging fails.
-        }
-    }
-
-    private function formatMessage(string $status, array $payload): string
-    {
-        $elapsedMs = (int) ($payload['elapsed_ms'] ?? 0);
-        $queries   = (int) ($payload['total_queries'] ?? 0);
-        $url       = (string) ($payload['url'] ?? '');
-
-        $suffix = $url !== '' ? ' ' . $url : '';
-
-        return sprintf(
-            'Slow database transaction %s (%dms, %d queries)%s',
-            $status === 'rolled_back' ? 'rolled back' : 'committed',
-            $elapsedMs,
-            $queries,
-            $suffix
-        );
-    }
 }
