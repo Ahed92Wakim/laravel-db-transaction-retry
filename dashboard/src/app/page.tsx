@@ -174,7 +174,7 @@ export default function Home() {
     const [timeRange, setTimeRange] = useState<TimeRangeValue>('24h');
     const [totalRetries, setTotalRetries] = useState<number | null>(null);
     const [retryTraffic, setRetryTraffic] = useState<
-        Array<{time: string; attempts: number; recovered: number}>
+        Array<{ time: string; attempts: number; recovered: number }>
     >([]);
     const [retryTrafficStatus, setRetryTrafficStatus] = useState<
         'idle' | 'loading' | 'error'
@@ -264,7 +264,7 @@ export default function Home() {
                 }
 
                 const payload = (await response.json()) as {
-                    data?: Array<{time: string; attempts: number; recovered: number}>;
+                    data?: Array<{ time: string; attempts: number; recovered: number }>;
                 };
 
                 setRetryTraffic(Array.isArray(payload?.data) ? payload.data : []);
@@ -304,10 +304,10 @@ export default function Home() {
             <aside className="sidebar">
                 <div>
                     <div className="sidebar__brand">
-                        <span className="sidebar__badge">RTR</span>
+                        {/*<span className="sidebar__badge">RTR</span>*/}
                         <div>
                             <p className="sidebar__title">Retry Control</p>
-                            <p className="sidebar__subtitle">nightwatch layer</p>
+                            {/*<p className="sidebar__subtitle">nightwatch layer</p>*/}
                         </div>
                     </div>
                     <nav className="sidebar__nav">
@@ -320,12 +320,9 @@ export default function Home() {
                                 <span>{item.label}</span>
                                 {item.badge ? (
                                     <span
-                                        className={`sidebar__pill${
-                                            item.tone === 'warn' ? ' sidebar__pill--warn' : ''
-                                        }`}
-                                    >
-                    {item.badge}
-                  </span>
+                                        className={`sidebar__pill${item.tone === 'warn' ? ' sidebar__pill--warn' : ''}`}>
+                                        {item.badge}
+                                    </span>
                                 ) : null}
                             </button>
                         ))}
@@ -356,8 +353,8 @@ export default function Home() {
                                                 : ''
                                     }`}
                                 >
-                  {item.value}
-                </span>
+                                    {item.value}
+                                </span>
                             </div>
                         ))}
                     </div>

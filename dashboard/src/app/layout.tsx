@@ -1,5 +1,6 @@
 import './globals.css';
 import { Sora, Space_Grotesk } from 'next/font/google';
+import React from "react";
 
 const displayFont = Sora({
   subsets: ['latin'],

@@ -15,17 +15,17 @@ class InstallCommand extends Command
         $force = (bool) $this->option('force');
 
         $this->call('vendor:publish', [
-            '--tag' => 'database-transaction-retry-config',
+            '--tag'   => 'database-transaction-retry-config',
             '--force' => $force,
         ]);
 
         $this->call('vendor:publish', [
-            '--tag' => 'database-transaction-retry-migrations',
+            '--tag'   => 'database-transaction-retry-migrations',
             '--force' => $force,
         ]);
 
         $this->call('vendor:publish', [
-            '--tag' => 'database-transaction-retry-dashboard',
+            '--tag'   => 'database-transaction-retry-dashboard',
             '--force' => $force,
         ]);
 

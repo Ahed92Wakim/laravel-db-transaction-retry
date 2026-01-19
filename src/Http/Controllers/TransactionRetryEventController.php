@@ -73,7 +73,7 @@ class TransactionRetryEventController
 
     public function today(Request $request): JsonResponse
     {
-        $table = (string) config('database-transaction-retry.logging.table', 'transaction_retry_events');
+        $table         = (string) config('database-transaction-retry.logging.table', 'transaction_retry_events');
         [$start, $end] = $this->resolveRange($request, 'today');
 
         $total = DB::table($table)
@@ -94,9 +94,9 @@ class TransactionRetryEventController
 
     public function traffic(Request $request): JsonResponse
     {
-        $table = (string) config('database-transaction-retry.logging.table', 'transaction_retry_events');
+        $table                  = (string) config('database-transaction-retry.logging.table', 'transaction_retry_events');
         [$start, $end, $window] = $this->resolveRange($request, '24h');
-        $bucket = $this->bucketForWindow($window, $start, $end);
+        $bucket                 = $this->bucketForWindow($window, $start, $end);
 
         $driver           = DB::getDriverName();
         $bucketExpression = $this->bucketExpression($bucket, $driver);
@@ -139,8 +139,8 @@ class TransactionRetryEventController
 
             $cursor = match ($bucket) {
                 'minute' => $cursor->addMinute(),
-                'hour' => $cursor->addHour(),
-                default => $cursor->addDay(),
+                'hour'   => $cursor->addHour(),
+                default  => $cursor->addDay(),
             };
         }
 
@@ -173,12 +173,12 @@ class TransactionRetryEventController
         }
 
         if (! $start || ! $end) {
-            $reference = $end ?? now();
-            $windowKey = $window !== '' ? $window : $defaultWindow;
+            $reference                 = $end ?? now();
+            $windowKey                 = $window !== '' ? $window : $defaultWindow;
             [$windowStart, $windowEnd] = $this->windowToRange($windowKey, $reference);
-            $start = $start ?? $windowStart;
-            $end   = $end ?? $windowEnd;
-            $window = $windowKey;
+            $start                     = $start ?? $windowStart;
+            $end                       = $end   ?? $windowEnd;
+            $window                    = $windowKey;
         }
 
         if ($end->lt($start)) {
@@ -191,11 +191,11 @@ class TransactionRetryEventController
     private function windowToRange(string $window, Carbon $reference): array
     {
         return match (strtolower($window)) {
-            '1h' => [$reference->copy()->subHour(), $reference->copy()],
-            '24h' => [$reference->copy()->subHours(24), $reference->copy()],
-            '7d' => [$reference->copy()->subDays(7), $reference->copy()],
-            '14d' => [$reference->copy()->subDays(14), $reference->copy()],
-            '30d' => [$reference->copy()->subDays(30), $reference->copy()],
+            '1h'    => [$reference->copy()->subHour(), $reference->copy()],
+            '24h'   => [$reference->copy()->subHours(24), $reference->copy()],
+            '7d'    => [$reference->copy()->subDays(7), $reference->copy()],
+            '14d'   => [$reference->copy()->subDays(14), $reference->copy()],
+            '30d'   => [$reference->copy()->subDays(30), $reference->copy()],
             'today' => [$reference->copy()->startOfDay(), $reference->copy()->endOfDay()],
             default => [$reference->copy()->subHours(24), $reference->copy()],
         };
@@ -217,7 +217,7 @@ class TransactionRetryEventController
     private function bucketForWindow(string $window, Carbon $start, Carbon $end): string
     {
         return match (strtolower($window)) {
-            '1h' => 'minute',
+            '1h'  => 'minute',
             '24h' => 'hour',
             '7d', '14d', '30d' => 'day',
             default => $this->bucketForDuration($start, $end),
@@ -247,23 +247,23 @@ class TransactionRetryEventController
         if ($driver === 'pgsql') {
             return match ($bucket) {
                 'minute' => "to_char(date_trunc('minute', occurred_at), 'YYYY-MM-DD HH24:MI:00')",
-                'hour' => "to_char(date_trunc('hour', occurred_at), 'YYYY-MM-DD HH24:00:00')",
-                default => "to_char(date_trunc('day', occurred_at), 'YYYY-MM-DD 00:00:00')",
+                'hour'   => "to_char(date_trunc('hour', occurred_at), 'YYYY-MM-DD HH24:00:00')",
+                default  => "to_char(date_trunc('day', occurred_at), 'YYYY-MM-DD 00:00:00')",
             };
         }
 
         if ($driver === 'sqlite') {
             return match ($bucket) {
                 'minute' => "strftime('%Y-%m-%d %H:%M:00', occurred_at)",
-                'hour' => "strftime('%Y-%m-%d %H:00:00', occurred_at)",
-                default => "strftime('%Y-%m-%d 00:00:00', occurred_at)",
+                'hour'   => "strftime('%Y-%m-%d %H:00:00', occurred_at)",
+                default  => "strftime('%Y-%m-%d 00:00:00', occurred_at)",
             };
         }
 
         return match ($bucket) {
             'minute' => "DATE_FORMAT(occurred_at, '%Y-%m-%d %H:%i:00')",
-            'hour' => "DATE_FORMAT(occurred_at, '%Y-%m-%d %H:00:00')",
-            default => "DATE_FORMAT(occurred_at, '%Y-%m-%d 00:00:00')",
+            'hour'   => "DATE_FORMAT(occurred_at, '%Y-%m-%d %H:00:00')",
+            default  => "DATE_FORMAT(occurred_at, '%Y-%m-%d 00:00:00')",
         };
     }
 
@@ -271,8 +271,8 @@ class TransactionRetryEventController
     {
         return match (strtolower($bucket)) {
             'minute' => 'Y-m-d H:i:00',
-            'hour' => 'Y-m-d H:00:00',
-            default => 'Y-m-d 00:00:00',
+            'hour'   => 'Y-m-d H:00:00',
+            default  => 'Y-m-d 00:00:00',
         };
     }
 
@@ -280,8 +280,8 @@ class TransactionRetryEventController
     {
         return match (strtolower($bucket)) {
             'minute' => 'H:i',
-            'hour' => 'H:00',
-            default => 'M d',
+            'hour'   => 'H:00',
+            default  => 'M d',
         };
     }
 
@@ -289,8 +289,8 @@ class TransactionRetryEventController
     {
         return match (strtolower($bucket)) {
             'minute' => $value->copy()->second(0),
-            'hour' => $value->copy()->minute(0)->second(0),
-            default => $value->copy()->startOfDay(),
+            'hour'   => $value->copy()->minute(0)->second(0),
+            default  => $value->copy()->startOfDay(),
         };
     }
 }
