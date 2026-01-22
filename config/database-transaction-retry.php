@@ -92,7 +92,6 @@ return [
     'dashboard' => [
         'enabled' => env('DB_TRANSACTION_RETRY_DASHBOARD_ENABLED', true),
         'path'    => env('DB_TRANSACTION_RETRY_DASHBOARD_PATH', 'transaction-retry'),
-        'gate'    => env('DB_TRANSACTION_RETRY_DASHBOARD_GATE', 'viewTransactionRetryDashboard'),
 
         'middleware' => [
             'web',

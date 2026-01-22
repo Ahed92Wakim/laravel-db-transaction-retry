@@ -88,24 +88,19 @@ class DatabaseTransactionRetryServiceProvider extends ServiceProvider
             return;
         }
 
-        $gate = (string) config('database-transaction-retry.dashboard.gate', 'viewTransactionRetryDashboard');
-        if ($gate === '') {
-            return;
-        }
-
-        Gate::define($gate, function ($user = null): bool {
+        Gate::define('viewTransactionRetryDashboard', function ($user = null): bool {
             if (! $user) {
                 return false;
             }
 
             $allowed = config('database-transaction-retry.dashboard.allowed_emails', []);
-            if (is_array($allowed) && ! empty($allowed)) {
-                $email = is_object($user) && property_exists($user, 'email') ? $user->email : null;
-
-                return is_string($email) && in_array($email, $allowed, true);
+            if (! is_array($allowed) || empty($allowed)) {
+                return false;
             }
 
-            return true;
+            $email = is_object($user) && property_exists($user, 'email') ? $user->email : null;
+
+            return is_string($email) && in_array($email, $allowed, true);
         });
     }
 
