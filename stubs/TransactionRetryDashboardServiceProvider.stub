@@ -1,0 +1,40 @@
+<?php
+
+namespace App\Providers;
+
+use DatabaseTransactions\RetryHelper\TransactionRetryDashboard;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\ServiceProvider;
+
+class TransactionRetryDashboardServiceProvider extends ServiceProvider
+{
+    public function register(): void
+    {
+        //
+    }
+
+    public function boot(): void
+    {
+        $this->authorization();
+    }
+
+    protected function authorization(): void
+    {
+        $this->gate();
+
+        TransactionRetryDashboard::auth(function (Request $request): bool {
+            return app()->environment('local')
+                || Gate::check('viewTransactionRetryDashboard', [$request->user()]);
+        });
+    }
+
+    protected function gate(): void
+    {
+        Gate::define('viewTransactionRetryDashboard', function ($user): bool {
+            return in_array($user->email, [
+                //
+            ], true);
+        });
+    }
+}

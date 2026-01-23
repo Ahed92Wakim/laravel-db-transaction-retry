@@ -77,7 +77,7 @@ Publish the configuration file to tweak defaults globally:
 php artisan vendor:publish --tag=database-transaction-retry-config
 ```
 
-You can also run `php artisan db-transaction-retry:install` to publish the config, migration, and dashboard in one step.
+You can also run `php artisan db-transaction-retry:install` to publish the config, migrations, auth provider stub, and dashboard in one step.
 
 - Key options (`config/database-transaction-retry.php`):
 
@@ -91,7 +91,9 @@ You can also run `php artisan db-transaction-retry:install` to publish the confi
 - `retryable_exceptions.driver_error_codes` lists driver-specific error codes (defaults to `1213` deadlocks and `1205` lock wait timeouts). Including `1205` not only enables retries but also activates the optional session lock wait timeout override when configured.
 - `retryable_exceptions.classes` lets you specify fully-qualified exception class names that should always be retried.
 - `dashboard.path` sets the UI path (defaults to `/transaction-retry`).
+- `dashboard.middleware` lets you attach middleware to the dashboard UI route (for example `web`, `auth`, or `can:viewTransactionRetryDashboard`).
 - `api.prefix` sets the JSON API prefix (defaults to `/api/transaction-retry`).
+- `api.middleware` lets you attach middleware to the JSON API routes (for example `web`, `auth`, or a custom gate).
 
 ## Database Migration
 
@@ -117,6 +119,53 @@ The package ships a static Next.js dashboard that is published into your Laravel
 
 - UI: `/transaction-retry`
 - API: `/api/transaction-retry/events`
+
+### Securing the dashboard
+
+By default the dashboard uses the `AuthorizeTransactionRetryDashboard` middleware, which only allows access in
+the `local` environment until you define your own authorization logic (mirroring Telescope). The install command
+publishes an `app/Providers/TransactionRetryDashboardServiceProvider.php` stub you can edit.
+
+To customize access, define a gate and register the authorization callback in one of your application service
+providers:
+
+```php
+use DatabaseTransactions\RetryHelper\TransactionRetryDashboard;
+use Illuminate\Support\Facades\Gate;
+
+Gate::define('viewTransactionRetryDashboard', function ($user) {
+    return in_array($user->email, [
+        // ...
+    ], true);
+});
+
+TransactionRetryDashboard::auth(function ($request) {
+    return app()->environment('local')
+        || Gate::check('viewTransactionRetryDashboard', [$request->user()]);
+});
+```
+
+Register the published service provider in `bootstrap/providers.php` (Laravel 11/12):
+
+```php
+return [
+    App\Providers\TransactionRetryDashboardServiceProvider::class,
+];
+```
+
+You can also swap the middleware stack for the dashboard and API routes in `config/database-transaction-retry.php`:
+
+```php
+'dashboard' => [
+    'middleware' => ['web', 'auth', 'can:viewTransactionRetryDashboard'],
+],
+
+'api' => [
+    'middleware' => ['web', 'auth', 'can:viewTransactionRetryDashboard'],
+],
+```
+
+Define the `viewTransactionRetryDashboard` gate in your application (or swap in any other middleware).
 
 Publish the dashboard assets:
 
