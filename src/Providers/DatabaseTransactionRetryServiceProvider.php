@@ -103,6 +103,14 @@ class DatabaseTransactionRetryServiceProvider extends ServiceProvider
             => $this->app->databasePath('migrations/2025_01_17_000001_create_db_transaction_logs_tables.php'),
         ], 'database-transaction-retry-migrations');
 
+        $providerPath = function_exists('app_path')
+            ? app_path('Providers/TransactionRetryDashboardServiceProvider.php')
+            : $this->app->basePath('app/Providers/TransactionRetryDashboardServiceProvider.php');
+
+        $this->publishes([
+            __DIR__ . '/../../stubs/TransactionRetryDashboardServiceProvider.stub' => $providerPath,
+        ], 'database-transaction-retry-dashboard-provider');
+
         $dashboardPath = trim((string) config('database-transaction-retry.dashboard.path', 'transaction-retry'), '/');
         $dashboardPath = $dashboardPath === '' ? 'transaction-retry' : $dashboardPath;
         $publicPath    = function_exists('public_path')

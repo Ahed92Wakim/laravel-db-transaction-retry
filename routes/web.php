@@ -1,12 +1,20 @@
 <?php
 
 use DatabaseTransactions\RetryHelper\Http\Controllers\TransactionRetryEventController;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Route;
 
 $apiEnabled = (bool) config('database-transaction-retry.api.enabled', true);
 
+$dashboardMiddleware = Arr::wrap(config('database-transaction-retry.dashboard.middleware', []));
+$dashboardMiddleware = array_values(array_filter($dashboardMiddleware, static fn ($middleware) => $middleware !== null && $middleware !== ''));
+
+$apiMiddleware = Arr::wrap(config('database-transaction-retry.api.middleware', []));
+$apiMiddleware = array_values(array_filter($apiMiddleware, static fn ($middleware) => $middleware !== null && $middleware !== ''));
+
 // Dashboard routes
 Route::prefix(trim((string) config('database-transaction-retry.dashboard.path', 'transaction-retry'), '/'))
+    ->middleware($dashboardMiddleware)
     ->group(function (): void {
         Route::get('/{path?}', function () {
             $path = trim((string) config('database-transaction-retry.dashboard.path', 'transaction-retry'), '/');
@@ -31,6 +39,7 @@ Route::prefix(trim((string) config('database-transaction-retry.dashboard.path', 
 
 if ($apiEnabled) {
     Route::prefix(trim((string) config('database-transaction-retry.api.prefix', 'api/transaction-retry'), '/'))
+        ->middleware($apiMiddleware)
         ->group(function (): void {
             Route::get('events', [TransactionRetryEventController::class, 'index']);
             Route::get('events/{id}', [TransactionRetryEventController::class, 'show'])->whereNumber('id');

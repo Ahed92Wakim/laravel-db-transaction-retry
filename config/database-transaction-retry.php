@@ -92,13 +92,28 @@ return [
         'enabled' => env('DB_TRANSACTION_RETRY_DASHBOARD_ENABLED', true),
         'path'    => env('DB_TRANSACTION_RETRY_DASHBOARD_PATH', 'transaction-retry'),
 
-        'middleware' => [],
+        /*
+        | Middleware to apply to the dashboard UI route. Use "web" for session
+        | auth and add "auth" or "can:ability" to enforce access control.
+        */
+        'middleware' => [
+            'web',
+            DatabaseTransactions\RetryHelper\Http\Middleware\AuthorizeTransactionRetryDashboard::class,
+        ],
     ],
 
     'api' => [
         'enabled'    => env('DB_TRANSACTION_RETRY_API_ENABLED', true),
         'prefix'     => env('DB_TRANSACTION_RETRY_API_PREFIX', 'api/transaction-retry'),
-        'middleware' => [],
+
+        /*
+        | Middleware to apply to the dashboard JSON API routes. For web-session
+        | auth, include "web" and "auth" (or a custom middleware/gate).
+        */
+        'middleware' => [
+            'web',
+            DatabaseTransactions\RetryHelper\Http\Middleware\AuthorizeTransactionRetryDashboard::class,
+        ],
     ],
 
     /*
