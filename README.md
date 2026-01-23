@@ -90,7 +90,7 @@ You can also run `php artisan db-transaction-retry:install` to publish the confi
 - `retryable_exceptions.sql_states` lists SQLSTATE codes that should trigger a retry (defaults to `40001`).
 - `retryable_exceptions.driver_error_codes` lists driver-specific error codes (defaults to `1213` deadlocks and `1205` lock wait timeouts). Including `1205` not only enables retries but also activates the optional session lock wait timeout override when configured.
 - `retryable_exceptions.classes` lets you specify fully-qualified exception class names that should always be retried.
-- `dashboard.path` sets the UI path (defaults to `/transaction-retry`), `dashboard.gate` controls authorization (defaults to `viewTransactionRetryDashboard`), and `dashboard.allowed_emails` restricts access outside local environments.
+- `dashboard.path` sets the UI path (defaults to `/transaction-retry`).
 - `api.prefix` sets the JSON API prefix (defaults to `/api/transaction-retry`).
 
 ## Database Migration
@@ -125,10 +125,6 @@ php artisan vendor:publish --tag=database-transaction-retry-dashboard
 ```
 
 The `db-transaction-retry:install` command publishes the dashboard too.
-
-### Authorization
-
-Access is gated using `dashboard.gate` (default `viewTransactionRetryDashboard`) and the `dashboard.middleware` stack. By default, the gate allows access in the `local` environment or for emails listed in `DB_TRANSACTION_RETRY_DASHBOARD_EMAILS`.
 
 ### Rebuilding the UI (package contributors)
 

@@ -5,8 +5,8 @@ use Illuminate\Support\Facades\Route;
 
 $apiEnabled = (bool) config('database-transaction-retry.api.enabled', true);
 
-Route::middleware(config('database-transaction-retry.dashboard.middleware', []))
-    ->prefix(trim((string) config('database-transaction-retry.dashboard.path', 'transaction-retry'), '/'))
+// Dashboard routes
+Route::prefix(trim((string) config('database-transaction-retry.dashboard.path', 'transaction-retry'), '/'))
     ->group(function (): void {
         Route::get('/{path?}', function () {
             $path = trim((string) config('database-transaction-retry.dashboard.path', 'transaction-retry'), '/');
@@ -30,16 +30,7 @@ Route::middleware(config('database-transaction-retry.dashboard.middleware', []))
     });
 
 if ($apiEnabled) {
-    $middleware = config('database-transaction-retry.api.middleware', []);
-    $middleware = is_array($middleware) ? $middleware : [];
-    $middleware = array_values(array_filter($middleware, static fn ($value) => $value !== null && $value !== ''));
-
-    if (in_array('auth', $middleware, true) && ! in_array('web', $middleware, true)) {
-        array_unshift($middleware, 'web');
-    }
-
-    Route::middleware($middleware)
-        ->prefix(trim((string) config('database-transaction-retry.api.prefix', 'api/transaction-retry'), '/'))
+    Route::prefix(trim((string) config('database-transaction-retry.api.prefix', 'api/transaction-retry'), '/'))
         ->group(function (): void {
             Route::get('events', [TransactionRetryEventController::class, 'index']);
             Route::get('events/{id}', [TransactionRetryEventController::class, 'show'])->whereNumber('id');

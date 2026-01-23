@@ -11,7 +11,6 @@ use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Database\Events\TransactionBeginning;
 use Illuminate\Database\Events\TransactionCommitted;
 use Illuminate\Database\Events\TransactionRolledBack;
-use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 
 class DatabaseTransactionRetryServiceProvider extends ServiceProvider
@@ -24,47 +23,14 @@ class DatabaseTransactionRetryServiceProvider extends ServiceProvider
         );
     }
 
-    /**
-     * Bootstrap any package services.
-     */
     public function boot(): void
     {
-        $this->registerDashboardGate();
         $this->registerRoutes();
         $this->registerSlowTransactionMonitor();
 
         if ($this->app->runningInConsole()) {
-            $configPath = function_exists('config_path')
-                ? config_path('database-transaction-retry.php')
-                : $this->app->basePath('config/database-transaction-retry.php');
-
-            $this->publishes([
-                __DIR__ . '/../../config/database-transaction-retry.php' => $configPath,
-            ], 'database-transaction-retry-config');
-
-            $this->publishes([
-                __DIR__ . '/../../database/migrations/2025_01_17_000000_create_transaction_retry_events_table.php'
-                    => $this->app->databasePath('migrations/2025_01_17_000000_create_transaction_retry_events_table.php'),
-                __DIR__ . '/../../database/migrations/2025_01_17_000001_create_db_transaction_logs_tables.php'
-                    => $this->app->databasePath('migrations/2025_01_17_000001_create_db_transaction_logs_tables.php'),
-            ], 'database-transaction-retry-migrations');
-
-            $dashboardPath = trim((string) config('database-transaction-retry.dashboard.path', 'transaction-retry'), '/');
-            $dashboardPath = $dashboardPath === '' ? 'transaction-retry' : $dashboardPath;
-            $publicPath    = function_exists('public_path')
-                ? public_path($dashboardPath)
-                : $this->app->basePath('public/' . $dashboardPath);
-
-            $this->publishes([
-                __DIR__ . '/../../dashboard/out' => $publicPath,
-            ], 'database-transaction-retry-dashboard');
-
-            $this->commands([
-                InstallCommand::class,
-                RollPartitionsCommand::class,
-                StartRetryCommand::class,
-                StopRetryCommand::class,
-            ]);
+            $this->registerPublishing();
+            $this->registerCommands();
         }
     }
 
@@ -80,28 +46,6 @@ class DatabaseTransactionRetryServiceProvider extends ServiceProvider
         if ($dashboardEnabled || $apiEnabled) {
             $this->loadRoutesFrom(__DIR__ . '/../../routes/web.php');
         }
-    }
-
-    protected function registerDashboardGate(): void
-    {
-        if (! class_exists(Gate::class)) {
-            return;
-        }
-
-        Gate::define('viewTransactionRetryDashboard', function ($user = null): bool {
-            if (! $user) {
-                return false;
-            }
-
-            $allowed = config('database-transaction-retry.dashboard.allowed_emails', []);
-            if (! is_array($allowed) || empty($allowed)) {
-                return false;
-            }
-
-            $email = is_object($user) && property_exists($user, 'email') ? $user->email : null;
-
-            return is_string($email) && in_array($email, $allowed, true);
-        });
     }
 
     protected function registerSlowTransactionMonitor(): void
@@ -141,4 +85,43 @@ class DatabaseTransactionRetryServiceProvider extends ServiceProvider
             $this->app->make(SlowTransactionMonitor::class)->handleQueryExecuted($event);
         });
     }
+
+    protected function registerPublishing(): void
+    {
+        $configPath = function_exists('config_path')
+            ? config_path('database-transaction-retry.php')
+            : $this->app->basePath('config/database-transaction-retry.php');
+
+        $this->publishes([
+            __DIR__ . '/../../config/database-transaction-retry.php' => $configPath,
+        ], 'database-transaction-retry-config');
+
+        $this->publishes([
+            __DIR__ . '/../../database/migrations/2025_01_17_000000_create_transaction_retry_events_table.php'
+            => $this->app->databasePath('migrations/2025_01_17_000000_create_transaction_retry_events_table.php'),
+            __DIR__ . '/../../database/migrations/2025_01_17_000001_create_db_transaction_logs_tables.php'
+            => $this->app->databasePath('migrations/2025_01_17_000001_create_db_transaction_logs_tables.php'),
+        ], 'database-transaction-retry-migrations');
+
+        $dashboardPath = trim((string) config('database-transaction-retry.dashboard.path', 'transaction-retry'), '/');
+        $dashboardPath = $dashboardPath === '' ? 'transaction-retry' : $dashboardPath;
+        $publicPath    = function_exists('public_path')
+            ? public_path($dashboardPath)
+            : $this->app->basePath('public/' . $dashboardPath);
+
+        $this->publishes([
+            __DIR__ . '/../../dashboard/out' => $publicPath,
+        ], 'database-transaction-retry-dashboard');
+    }
+
+    protected function registerCommands(): void
+    {
+        $this->commands([
+            InstallCommand::class,
+            RollPartitionsCommand::class,
+            StartRetryCommand::class,
+            StopRetryCommand::class,
+        ]);
+    }
+
 }

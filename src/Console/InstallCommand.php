@@ -14,6 +14,10 @@ class InstallCommand extends Command
     {
         $force = (bool) $this->option('force');
 
+        $this->info('Installing YourPackage...');
+        $this->newLine();
+
+        $this->info('Publishing configuration...');
         $this->call('vendor:publish', [
             '--tag'   => 'database-transaction-retry-config',
             '--force' => $force,
