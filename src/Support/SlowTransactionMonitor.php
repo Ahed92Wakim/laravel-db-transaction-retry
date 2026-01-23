@@ -302,8 +302,14 @@ class SlowTransactionMonitor
             $routeName = null;
         }
 
+        $url = null;
         try {
-            $url = method_exists($request, 'fullUrl') ? $request->fullUrl() : $request->url();
+            if (method_exists($request, 'route')) {
+                $route = $request->route();
+                if (is_object($route) && method_exists($route, 'uri')) {
+                    $url = $route->uri();
+                }
+            }
         } catch (Throwable) {
             $url = null;
         }

@@ -224,8 +224,15 @@ class TransactionRetrier
 
         $request = request();
 
-        $data['url']    = method_exists($request, 'getUri') ? $request->getUri() : null;
         $data['method'] = method_exists($request, 'getMethod') ? $request->getMethod() : null;
+
+        $data['url'] = null;
+        if (method_exists($request, 'route')) {
+            $route = $request->route();
+            if (is_object($route) && method_exists($route, 'uri')) {
+                $data['url'] = $route->uri();
+            }
+        }
 
         if (method_exists($request, 'route')) {
             $route = $request->route();
