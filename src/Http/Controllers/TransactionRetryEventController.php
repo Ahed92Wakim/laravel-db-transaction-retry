@@ -233,6 +233,82 @@ class TransactionRetryEventController
         ]);
     }
 
+    public function routesVolume(Request $request): JsonResponse
+    {
+        $logTable               = (string)config('database-transaction-retry.slow_transactions.log_table', 'db_transaction_logs');
+        $connection             = $this->resolveSlowTransactionConnection();
+        [$start, $end, $window] = $this->resolveRange($request, '24h');
+        $limit                  = min(max((int)$request->query('limit', 10), 1), 50);
+
+        $baseQuery = $connection->table($logTable)
+            ->whereNotNull('completed_at')
+            ->where('completed_at', '>=', $start)
+            ->where('completed_at', '<=', $end)
+            ->where(function ($query): void {
+                $query->whereNotNull('route_name')->orWhereNotNull('url');
+            });
+
+        $rows = (clone $baseQuery)
+            ->selectRaw('ANY_VALUE(http_method) as method')
+            ->selectRaw('ANY_VALUE(route_name) as route_name')
+            ->selectRaw('ANY_VALUE(url) as url')
+            ->selectRaw('COUNT(*) as total')
+            ->selectRaw('AVG(elapsed_ms) as avg_ms')
+            ->selectRaw('SUM(CASE WHEN http_status BETWEEN 100 AND 399 THEN 1 ELSE 0 END) as status_1xx_3xx')
+            ->selectRaw('SUM(CASE WHEN http_status BETWEEN 400 AND 499 THEN 1 ELSE 0 END) as status_4xx')
+            ->selectRaw('SUM(CASE WHEN http_status >= 500 THEN 1 ELSE 0 END) as status_5xx')
+            ->groupBy('http_method', 'route_name', 'url')
+            ->orderByDesc('total')
+            ->limit($limit)
+            ->get();
+
+        $rows = $rows->map(function ($row) use ($baseQuery) {
+            $count  = (int) ($row->total ?? 0);
+            $offset = max((int) ceil($count * 0.95) - 1, 0);
+
+            $p95 = (clone $baseQuery)
+                ->when($row->method !== null, function ($query) use ($row): void {
+                    $query->where('http_method', $row->method);
+                }, function ($query): void {
+                    $query->whereNull('http_method');
+                })
+                ->when($row->route_name !== null, function ($query) use ($row): void {
+                    $query->where('route_name', $row->route_name);
+                }, function ($query): void {
+                    $query->whereNull('route_name');
+                })
+                ->when($row->url !== null, function ($query) use ($row): void {
+                    $query->where('url', $row->url);
+                }, function ($query): void {
+                    $query->whereNull('url');
+                })
+                ->orderBy('elapsed_ms')
+                ->offset($offset)
+                ->limit(1)
+                ->value('elapsed_ms');
+
+            $row->avg_ms         = is_numeric($row->avg_ms) ? round((float) $row->avg_ms, 2) : 0;
+            $row->p95_ms         = is_numeric($p95) ? (int) $p95 : 0;
+            $row->status_1xx_3xx = (int) ($row->status_1xx_3xx ?? 0);
+            $row->status_4xx     = (int) ($row->status_4xx ?? 0);
+            $row->status_5xx     = (int) ($row->status_5xx ?? 0);
+            $row->total          = (int) ($row->total ?? 0);
+
+            return $row;
+        });
+
+
+        return response()->json([
+            'data' => $rows,
+            'meta' => [
+                'from'   => $start->toIso8601String(),
+                'to'     => $end->toIso8601String(),
+                'window' => $window,
+                'limit'  => $limit,
+            ],
+        ]);
+    }
+
     public function queries(Request $request): JsonResponse
     {
         $logTable               = (string)config('database-transaction-retry.slow_transactions.log_table', 'db_transaction_logs');
