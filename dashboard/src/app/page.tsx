@@ -983,29 +983,13 @@ export default function Home() {
                                 </div>
                                 <div className="chart-summary__stats">
                                     <div className="chart-summary__stat">
-                                        <span className="legend-dot"/>
-                                        <span>Peak</span>
-                                        <strong>
-                                            {formatOptionalNumber(
-                                                transactionVolumeSummary.peak
-                                            )}
-                                        </strong>
-                                    </div>
-                                    <div className="chart-summary__stat">
-                                        <span className="legend-dot legend-dot--cool"/>
-                                        <span>Avg / bucket</span>
-                                        <strong>
-                                            {formatOptionalNumber(
-                                                transactionVolumeSummary.average,
-                                                {
-                                                    maximumFractionDigits: 1,
-                                                }
-                                            )}
-                                        </strong>
-                                    </div>
-                                </div>
-                                <div className="chart-summary__ranges">
-                                    <div className="chart-summary__range">
+                                        {/*<span className="legend-dot"/>*/}
+                                        {/*<span>Peak</span>*/}
+                                        {/*<strong>*/}
+                                        {/*    {formatOptionalNumber(*/}
+                                        {/*        transactionVolumeSummary.peak*/}
+                                        {/*    )}*/}
+                                        {/*</strong>*/}
                                         <span className="legend-dot legend-dot--cool"/>
                                         <span>&lt; 2s</span>
                                         <strong>
@@ -1014,7 +998,17 @@ export default function Home() {
                                             )}
                                         </strong>
                                     </div>
-                                    <div className="chart-summary__range">
+                                    <div className="chart-summary__stat">
+                                        {/*<span className="legend-dot legend-dot--cool"/>*/}
+                                        {/*<span>Avg / bucket</span>*/}
+                                        {/*<strong>*/}
+                                        {/*    {formatOptionalNumber(*/}
+                                        {/*        transactionVolumeSummary.average,*/}
+                                        {/*        {*/}
+                                        {/*            maximumFractionDigits: 1,*/}
+                                        {/*        }*/}
+                                        {/*    )}*/}
+                                        {/*</strong>*/}
                                         <span className="legend-dot legend-dot--hot"/>
                                         <span>&gt; 2s</span>
                                         <strong>
@@ -1024,6 +1018,26 @@ export default function Home() {
                                         </strong>
                                     </div>
                                 </div>
+                                {/*<div className="chart-summary__ranges">*/}
+                                {/*    <div className="chart-summary__range">*/}
+                                {/*        <span className="legend-dot legend-dot--cool"/>*/}
+                                {/*        <span>&lt; 2s</span>*/}
+                                {/*        <strong>*/}
+                                {/*            {formatOptionalNumber(*/}
+                                {/*                transactionVolumeSummary.under_2s*/}
+                                {/*            )}*/}
+                                {/*        </strong>*/}
+                                {/*    </div>*/}
+                                {/*    <div className="chart-summary__range">*/}
+                                {/*        <span className="legend-dot legend-dot--hot"/>*/}
+                                {/*        <span>&gt; 2s</span>*/}
+                                {/*        <strong>*/}
+                                {/*            {formatOptionalNumber(*/}
+                                {/*                transactionVolumeSummary.over_2s*/}
+                                {/*            )}*/}
+                                {/*        </strong>*/}
+                                {/*    </div>*/}
+                                {/*</div>*/}
                             </div>
                             <div
                                 className={`chart-frame${
