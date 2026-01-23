@@ -46,6 +46,7 @@ if ($apiEnabled) {
             Route::get('metrics/today', [TransactionRetryEventController::class, 'today']);
             Route::get('metrics/traffic', [TransactionRetryEventController::class, 'traffic']);
             Route::get('metrics/routes', [TransactionRetryEventController::class, 'routes']);
+            Route::get('metrics/routes-volume', [TransactionRetryEventController::class, 'routesVolume']);
             Route::get('metrics/queries', [TransactionRetryEventController::class, 'queries']);
         });
 }

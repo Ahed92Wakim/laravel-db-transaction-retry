@@ -32,6 +32,7 @@ return new class () extends Migration {
             $table->string('http_method', 10)->nullable();
             $table->text('url')->nullable();
             $table->string('ip_address', 45)->nullable();
+            $table->unsignedSmallInteger('http_status')->nullable()->index();
 
             $table->index('status', 'idx_status');
             $table->index('elapsed_ms', 'idx_elapsed_ms');

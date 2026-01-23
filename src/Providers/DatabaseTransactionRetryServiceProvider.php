@@ -11,6 +11,7 @@ use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Database\Events\TransactionBeginning;
 use Illuminate\Database\Events\TransactionCommitted;
 use Illuminate\Database\Events\TransactionRolledBack;
+use Illuminate\Foundation\Http\Events\RequestHandled;
 use Illuminate\Support\ServiceProvider;
 
 class DatabaseTransactionRetryServiceProvider extends ServiceProvider
@@ -84,6 +85,12 @@ class DatabaseTransactionRetryServiceProvider extends ServiceProvider
         $events->listen(QueryExecuted::class, function ($event): void {
             $this->app->make(SlowTransactionMonitor::class)->handleQueryExecuted($event);
         });
+
+        if (class_exists(RequestHandled::class)) {
+            $events->listen(RequestHandled::class, function ($event): void {
+                $this->app->make(SlowTransactionMonitor::class)->handleRequestHandled($event);
+            });
+        }
     }
 
     protected function registerPublishing(): void

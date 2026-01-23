@@ -19,14 +19,14 @@ import {
 } from 'recharts';
 import type {TooltipProps} from 'recharts';
 
-const latencyTrend = [
-    {time: '00:00', p95: 420, p99: 610},
-    {time: '04:00', p95: 460, p99: 650},
-    {time: '08:00', p95: 510, p99: 700},
-    {time: '12:00', p95: 480, p99: 670},
-    {time: '16:00', p95: 530, p99: 720},
-    {time: '20:00', p95: 455, p99: 640},
-];
+// const latencyTrend = [
+//     {time: '00:00', p95: 420, p99: 610},
+//     {time: '04:00', p95: 460, p99: 650},
+//     {time: '08:00', p95: 510, p99: 700},
+//     {time: '12:00', p95: 480, p99: 670},
+//     {time: '16:00', p95: 530, p99: 720},
+//     {time: '20:00', p95: 455, p99: 640},
+// ];
 
 const errorCodes = [
     {code: '400', count: 36},
@@ -49,23 +49,23 @@ const kpiBase = [
     {label: 'Escalations', value: '7', delta: '+2 incidents', down: true},
 ];
 
-const metaCards = [
-    {
-        label: 'Window',
-        value: 'Last 24 hours',
-        meta: 'Auto-refresh every 60s',
-    },
-    {
-        label: 'Nodes monitored',
-        value: '18 active',
-        meta: 'EU-West + US-East',
-    },
-    {
-        label: 'Queue depth',
-        value: '243 jobs',
-        meta: 'Peak at 10:40',
-    },
-];
+// const metaCards = [
+//     {
+//         label: 'Window',
+//         value: 'Last 24 hours',
+//         meta: 'Auto-refresh every 60s',
+//     },
+//     {
+//         label: 'Nodes monitored',
+//         value: '18 active',
+//         meta: 'EU-West + US-East',
+//     },
+//     {
+//         label: 'Queue depth',
+//         value: '243 jobs',
+//         meta: 'Peak at 10:40',
+//     },
+// ];
 
 const donutColors = [
     'var(--accent)',
@@ -105,6 +105,18 @@ type RouteMetric = {
     success: number;
     failure: number;
     last_seen?: string | null;
+};
+
+type RouteVolumeMetric = {
+    method?: string | null;
+    route_name?: string | null;
+    url?: string | null;
+    status_1xx_3xx: number;
+    status_4xx: number;
+    status_5xx: number;
+    total: number;
+    avg_ms: number;
+    p95_ms: number;
 };
 
 type QueryMetric = {
@@ -244,6 +256,53 @@ const toCount = (value: unknown): number => {
     return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const WarningIcon = () => (
+    <svg
+        className="route-status__icon"
+        viewBox="0 0 20 20"
+        fill="none"
+        aria-hidden="true"
+    >
+        <path
+            d="M10 3.5L17 15.7H3L10 3.5Z"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinejoin="round"
+        />
+        <path
+            d="M10 7.2V11.4"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+        />
+        <circle cx="10" cy="14.1" r="1" fill="currentColor"/>
+    </svg>
+);
+
+const ErrorIcon = () => (
+    <svg
+        className="route-status__icon"
+        viewBox="0 0 20 20"
+        fill="none"
+        aria-hidden="true"
+    >
+        <circle
+            cx="10"
+            cy="10"
+            r="7.5"
+            stroke="currentColor"
+            strokeWidth="1.6"
+        />
+        <path
+            d="M10 6.4V11"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+        />
+        <circle cx="10" cy="13.6" r="1" fill="currentColor"/>
+    </svg>
+);
+
 const formatOptionalNumber = (
     value: number | null | undefined,
     options?: Intl.NumberFormatOptions
@@ -275,6 +334,57 @@ const formatDurationMs = (value: number | string | null | undefined): string => 
     }
 
     return `${formatDurationValue(numeric)}ms`;
+};
+
+const renderStatusCell = (
+    value: number | null | undefined,
+    tone: 'warn' | 'error'
+) => {
+    const count = toCount(value);
+    const formatted = formatValue(count);
+
+    if (count <= 0) {
+        return <span className="route-status route-status--muted">{formatted}</span>;
+    }
+
+    return (
+        <span className={`route-status route-status--${tone}`}>
+            {tone === 'warn' ? <WarningIcon/> : <ErrorIcon/>}
+            <span className="route-status__value">{formatted}</span>
+        </span>
+    );
+};
+
+const methodClassName = (method?: string | null): string => {
+    const normalized = method?.toUpperCase();
+
+    if (!normalized) {
+        return 'route-method--default';
+    }
+
+    if (normalized.includes('DELETE')) {
+        return 'route-method--delete';
+    }
+    if (normalized.includes('PATCH')) {
+        return 'route-method--patch';
+    }
+    if (normalized.includes('PUT')) {
+        return 'route-method--put';
+    }
+    if (normalized.includes('POST')) {
+        return 'route-method--post';
+    }
+    if (normalized.includes('GET') || normalized.includes('HEAD')) {
+        return 'route-method--get';
+    }
+    if (normalized.includes('OPTIONS')) {
+        return 'route-method--options';
+    }
+    if (normalized.includes('TRACE')) {
+        return 'route-method--trace';
+    }
+
+    return 'route-method--default';
 };
 
 const formatTooltipTimestamp = (
@@ -412,6 +522,10 @@ export default function Home() {
     >('idle');
     const [routeMetrics, setRouteMetrics] = useState<RouteMetric[]>([]);
     const [routeMetricsStatus, setRouteMetricsStatus] = useState<
+        'idle' | 'loading' | 'error'
+    >('idle');
+    const [routeVolumeMetrics, setRouteVolumeMetrics] = useState<RouteVolumeMetric[]>([]);
+    const [routeVolumeStatus, setRouteVolumeStatus] = useState<
         'idle' | 'loading' | 'error'
     >('idle');
     const [queryMetrics, setQueryMetrics] = useState<QueryMetric[]>([]);
@@ -571,7 +685,9 @@ export default function Home() {
         const load = async () => {
             try {
                 const response = await fetch(
-                    `${apiBase}/metrics/routes?${rangeQuery}&limit=${routeMetricsLimit}`,
+                    // `${apiBase}/metrics/routes?${rangeQuery}&limit=${routeMetricsLimit}`,
+                    `${apiBase}/metrics/routes-volume?${rangeQuery}&limit=${routeMetricsLimit}`,
+
                     {
                         signal: controller.signal,
                         headers: {Accept: 'application/json'},
@@ -580,6 +696,69 @@ export default function Home() {
 
                 if (!response.ok) {
                     setRouteMetricsStatus('error');
+                    return;
+                }
+
+                const payload = (await response.json()) as {
+                    data?: Array<{
+                        method?: string | null;
+                        route_name?: string | null;
+                        url?: string | null;
+                        status_1xx_3xx?: number | string;
+                        status_4xx?: number | string;
+                        status_5xx?: number | string;
+                        total?: number | string;
+                        avg_ms?: number | string;
+                        p95_ms?: number | string;
+                    }>;
+                };
+                const rows = Array.isArray(payload?.data) ? payload.data : [];
+                const normalized = rows.map((row) => {
+                    const avgMs = Number(row.avg_ms ?? 0);
+                    const p95Ms = Number(row.p95_ms ?? 0);
+
+                    return {
+                        ...row,
+                        status_1xx_3xx: toCount(row.status_1xx_3xx ?? 0),
+                        status_4xx: toCount(row.status_4xx ?? 0),
+                        status_5xx: toCount(row.status_5xx ?? 0),
+                        total: toCount(row.total ?? 0),
+                        avg_ms: Number.isFinite(avgMs) ? avgMs : 0,
+                        p95_ms: Number.isFinite(p95Ms) ? p95Ms : 0,
+                    };
+                });
+
+                setRouteVolumeMetrics(normalized);
+                setRouteMetricsStatus('idle');
+            } catch (error) {
+                if ((error as Error).name !== 'AbortError') {
+                    setRouteMetricsStatus('error');
+                }
+            }
+        };
+
+        load();
+
+        return () => controller.abort();
+    }, [rangeQuery]);
+
+    useEffect(() => {
+        const controller = new AbortController();
+        setRouteVolumeStatus('loading');
+
+        const load = async () => {
+            try {
+                const response = await fetch(
+                    // `${apiBase}/metrics/routes-volume?${rangeQuery}&limit=${routeMetricsLimit}`,
+                    `${apiBase}/metrics/routes?${rangeQuery}&limit=${routeMetricsLimit}`,
+                    {
+                        signal: controller.signal,
+                        headers: {Accept: 'application/json'},
+                    }
+                );
+
+                if (!response.ok) {
+                    setRouteVolumeStatus('error');
                     return;
                 }
 
@@ -604,10 +783,10 @@ export default function Home() {
                 }));
 
                 setRouteMetrics(normalized);
-                setRouteMetricsStatus('idle');
+                setRouteVolumeStatus('idle');
             } catch (error) {
                 if ((error as Error).name !== 'AbortError') {
-                    setRouteMetricsStatus('error');
+                    setRouteVolumeStatus('error');
                 }
             }
         };
@@ -748,6 +927,14 @@ export default function Home() {
                 : routeMetrics.length === 0
                     ? 'No route retries in this window.'
                     : null;
+    const routeVolumeMessage =
+        routeVolumeStatus === 'loading'
+            ? 'Loading routes...'
+            : routeVolumeStatus === 'error'
+                ? 'Unable to load routes.'
+                : routeVolumeMetrics.length === 0
+                    ? 'No routes recorded in this window.'
+                    : null;
     const queryMetricsMessage =
         queryMetricsStatus === 'loading'
             ? 'Loading query metrics...'
@@ -834,8 +1021,8 @@ export default function Home() {
                 queryDurationSummary.maxP95
             )}`
             : '--';
-    const formatRouteLabel = (row: RouteMetric): string => {
-        const name = row.route_name?.trim();
+    const formatRouteLabel = (row: {route_name?: string | null; url?: string | null}): string => {
+        const name = row.url?.trim();
         if (name) {
             return name;
         }
@@ -874,7 +1061,12 @@ export default function Home() {
                                 <span>{item.label}</span>
                                 {item.badge ? (
                                     <span
-                                        className={`sidebar__pill${item.tone === 'warn' ? ' sidebar__pill--warn' : ''}`}>
+                                        className={`sidebar__pill${
+                                            item.tone === 'warn'
+                                                ? ' sidebar__pill--warn'
+                                                : ''
+                                        }`}
+                                    >
                                         {item.badge}
                                     </span>
                                 ) : null}
@@ -983,13 +1175,6 @@ export default function Home() {
                                 </div>
                                 <div className="chart-summary__stats">
                                     <div className="chart-summary__stat">
-                                        {/*<span className="legend-dot"/>*/}
-                                        {/*<span>Peak</span>*/}
-                                        {/*<strong>*/}
-                                        {/*    {formatOptionalNumber(*/}
-                                        {/*        transactionVolumeSummary.peak*/}
-                                        {/*    )}*/}
-                                        {/*</strong>*/}
                                         <span className="legend-dot legend-dot--cool"/>
                                         <span>&lt; 2s</span>
                                         <strong>
@@ -999,16 +1184,6 @@ export default function Home() {
                                         </strong>
                                     </div>
                                     <div className="chart-summary__stat">
-                                        {/*<span className="legend-dot legend-dot--cool"/>*/}
-                                        {/*<span>Avg / bucket</span>*/}
-                                        {/*<strong>*/}
-                                        {/*    {formatOptionalNumber(*/}
-                                        {/*        transactionVolumeSummary.average,*/}
-                                        {/*        {*/}
-                                        {/*            maximumFractionDigits: 1,*/}
-                                        {/*        }*/}
-                                        {/*    )}*/}
-                                        {/*</strong>*/}
                                         <span className="legend-dot legend-dot--hot"/>
                                         <span>&gt; 2s</span>
                                         <strong>
@@ -1018,26 +1193,6 @@ export default function Home() {
                                         </strong>
                                     </div>
                                 </div>
-                                {/*<div className="chart-summary__ranges">*/}
-                                {/*    <div className="chart-summary__range">*/}
-                                {/*        <span className="legend-dot legend-dot--cool"/>*/}
-                                {/*        <span>&lt; 2s</span>*/}
-                                {/*        <strong>*/}
-                                {/*            {formatOptionalNumber(*/}
-                                {/*                transactionVolumeSummary.under_2s*/}
-                                {/*            )}*/}
-                                {/*        </strong>*/}
-                                {/*    </div>*/}
-                                {/*    <div className="chart-summary__range">*/}
-                                {/*        <span className="legend-dot legend-dot--hot"/>*/}
-                                {/*        <span>&gt; 2s</span>*/}
-                                {/*        <strong>*/}
-                                {/*            {formatOptionalNumber(*/}
-                                {/*                transactionVolumeSummary.over_2s*/}
-                                {/*            )}*/}
-                                {/*        </strong>*/}
-                                {/*    </div>*/}
-                                {/*</div>*/}
                             </div>
                             <div
                                 className={`chart-frame${
@@ -1172,6 +1327,59 @@ export default function Home() {
                     </div>
                 </section>
 
+                <section className="route-table route-table--compact">
+                    <div className="route-table__header">
+                        <p className="route-table__title">Routes</p>
+                        <span className="route-table__meta">
+                            {rangeShortLabel} window
+                        </span>
+                    </div>
+                    {routeVolumeMessage ? (
+                        <p className="route-table__empty">{routeVolumeMessage}</p>
+                    ) : (
+                        <div className="route-table__scroll">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Method</th>
+                                        <th>Path</th>
+                                        <th>1/2/3xx</th>
+                                        <th>4xx</th>
+                                        <th>5xx</th>
+                                        <th>Total</th>
+                                        <th>Avg</th>
+                                        <th>P95</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {routeVolumeMetrics.map((row) => (
+                                        <tr
+                                            key={`volume-${row.method ?? 'method'}-${row.route_name ?? row.url ?? 'unknown'}`}
+                                        >
+                                            <td>
+                                                <span
+                                                    className={`route-method route-method--text ${methodClassName(row.method)}`}
+                                                >
+                                                    {row.method
+                                                        ? row.method.toUpperCase()
+                                                        : '--'}
+                                                </span>
+                                            </td>
+                                            <td>{formatRouteLabel(row)}</td>
+                                            <td>{formatValue(row.status_1xx_3xx ?? 0)}</td>
+                                            <td>{renderStatusCell(row.status_4xx, 'warn')}</td>
+                                            <td>{renderStatusCell(row.status_5xx, 'error')}</td>
+                                            <td>{formatValue(row.total ?? 0)}</td>
+                                            <td>{formatDurationMs(row.avg_ms)}</td>
+                                            <td>{formatDurationMs(row.p95_ms)}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </section>
+
                 <section className="grid metrics">
                     {kpis.map((kpi) => (
                         <div className="card metric-card" key={kpi.label}>
@@ -1182,8 +1390,8 @@ export default function Home() {
                                     kpi.down ? ' metric-card__delta--down' : ''
                                 }`}
                             >
-                {kpi.delta}
-              </span>
+                                {kpi.delta}
+                            </span>
                         </div>
                     ))}
                 </section>
@@ -1268,15 +1476,15 @@ export default function Home() {
                             )}
                         </div>
                         <div className="legend">
-              <span>
-                <span className="legend-dot"/> Attempts
-              </span>
                             <span>
-                <span className="legend-dot legend-dot--cool"/> Success
-              </span>
+                                <span className="legend-dot"/> Attempts
+                            </span>
                             <span>
-                <span className="legend-dot legend-dot--gold"/> Failure
-              </span>
+                                <span className="legend-dot legend-dot--cool"/> Success
+                            </span>
+                            <span>
+                                <span className="legend-dot legend-dot--gold"/> Failure
+                            </span>
                         </div>
                     </div>
                     <div className="route-table chart-card--wide">
@@ -1292,38 +1500,40 @@ export default function Home() {
                             <div className="route-table__scroll">
                                 <table>
                                     <thead>
-                                    <tr>
-                                        <th>Route</th>
-                                        <th>Attempts</th>
-                                        <th>Success</th>
-                                        <th>Failure</th>
-                                    </tr>
+                                        <tr>
+                                            <th>Route</th>
+                                            <th>Attempts</th>
+                                            <th>Success</th>
+                                            <th>Failure</th>
+                                        </tr>
                                     </thead>
                                     <tbody>
-                                    {routeMetrics.map((row) => (
-                                        <tr
-                                            key={`${row.route_hash ?? 'route'}-${row.method ?? 'method'}-${row.route_name ?? row.url ?? 'unknown'}`}
-                                        >
-                                            <td>
-                                                <div className="route-cell">
-                                                    <span className="route-method">
-                                                        {row.method
-                                                            ? row.method.toUpperCase()
-                                                            : '--'}
-                                                    </span>
-                                                    <span
-                                                        className="route-name"
-                                                        title={formatRouteLabel(row)}
-                                                    >
-                                                        {formatRouteLabel(row)}
-                                                    </span>
-                                                </div>
-                                            </td>
-                                            <td>{formatValue(row.attempts)}</td>
-                                            <td>{formatValue(row.success)}</td>
-                                            <td>{formatValue(row.failure)}</td>
-                                        </tr>
-                                    ))}
+                                        {routeMetrics.map((row) => (
+                                            <tr
+                                                key={`${row.route_hash ?? 'route'}-${row.method ?? 'method'}-${row.route_name ?? row.url ?? 'unknown'}`}
+                                            >
+                                                <td>
+                                                    <div className="route-cell">
+                                                        <span
+                                                            className={`route-method ${methodClassName(row.method)}`}
+                                                        >
+                                                            {row.method
+                                                                ? row.method.toUpperCase()
+                                                                : '--'}
+                                                        </span>
+                                                        <span
+                                                            className="route-name"
+                                                            title={formatRouteLabel(row)}
+                                                        >
+                                                            {formatRouteLabel(row)}
+                                                        </span>
+                                                    </div>
+                                                </td>
+                                                <td>{formatValue(row.attempts)}</td>
+                                                <td>{formatValue(row.success)}</td>
+                                                <td>{formatValue(row.failure)}</td>
+                                            </tr>
+                                        ))}
                                     </tbody>
                                 </table>
                             </div>
@@ -1399,20 +1609,21 @@ export default function Home() {
                         <div className="legend">
                             {retryReasons.map((reason, index) => (
                                 <span key={reason.name}>
-                  <span
-                      className="legend-dot"
-                      style={{
-                          background: donutColors[index % donutColors.length],
-                      }}
-                  />
+                                    <span
+                                        className="legend-dot"
+                                        style={{
+                                            background:
+                                                donutColors[
+                                                    index % donutColors.length
+                                                ],
+                                        }}
+                                    />
                                     {reason.name}
-                </span>
+                                </span>
                             ))}
                         </div>
                     </div>
                 </section>
-
-
             </div>
         </main>
     );
