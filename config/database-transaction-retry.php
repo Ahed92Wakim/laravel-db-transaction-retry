@@ -33,23 +33,72 @@ return [
     | Logging
     |--------------------------------------------------------------------------
     |
-    | Control how retry attempts are logged. Provide a `channel` to reuse any
-    | logging channel defined in your application, supply a `config` array to
-    | build a dedicated logger on the fly. When none are defined,
-    | the package will continue to emit dated single-file logs per prior
-    | behaviour.
+    | Control how retry attempts are recorded. Set `driver` to "database" to
+    | persist retry events to the transaction_retry_events table (publish and
+    | run the migration), or "log" to keep file/channel logging. Provide a
+    | `channel` to reuse any logging channel defined in your application, or
+    | supply a `config` array to build a dedicated logger on the fly.
     |
     */
 
     'log_file_name' => env('DB_TRANSACTION_RETRY_LOG_FILE', 'database/transaction-retries'),
 
     'logging' => [
+        'driver'  => env('DB_TRANSACTION_RETRY_LOG_DRIVER', 'database'),
+        'table'   => env('DB_TRANSACTION_RETRY_LOG_TABLE', 'transaction_retry_events'),
         'channel' => env('DB_TRANSACTION_RETRY_LOG_CHANNEL'),
+        'config'  => [],
 
         'levels' => [
             'success' => env('DB_TRANSACTION_RETRY_LOG_SUCCESS_LEVEL', 'warning'),
             'failure' => env('DB_TRANSACTION_RETRY_LOG_FAILURE_LEVEL', 'error'),
+            'attempt' => env('DB_TRANSACTION_RETRY_LOG_ATTEMPT_LEVEL', 'warning'),
         ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Slow Transaction Monitoring
+    |--------------------------------------------------------------------------
+    |
+    | Track slow database transactions and persist summary data for analysis.
+    | Configure thresholds in milliseconds and the tables that store summaries
+    | and slow queries. Logging can also write to the default or named channel.
+    |
+    */
+
+    'slow_transactions' => [
+        'enabled'                  => env('DB_SLOW_TRANSACTION_ENABLED', true),
+        'transaction_threshold_ms' => (int) env('DB_SLOW_TRANSACTION_THRESHOLD_MS', 1),
+        'slow_query_threshold_ms'  => (int) env('DB_SLOW_TRANSACTION_QUERY_THRESHOLD_MS', 1),
+        'log_table'                => env('DB_SLOW_TRANSACTION_LOG_TABLE', 'db_transaction_logs'),
+        'query_table'              => env('DB_SLOW_TRANSACTION_QUERY_TABLE', 'db_transaction_queries'),
+        'log_connection'           => env('DB_SLOW_TRANSACTION_LOG_CONNECTION'),
+        'log_enabled'              => env('DB_SLOW_TRANSACTION_LOG_ENABLED', true),
+        'log_channel'              => env('DB_SLOW_TRANSACTION_LOG_CHANNEL'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Dashboard
+    |--------------------------------------------------------------------------
+    |
+    | Configure the embedded dashboard UI and API endpoints. The UI is served
+    | from the published static assets under the configured path.
+    |
+    */
+
+    'dashboard' => [
+        'enabled' => env('DB_TRANSACTION_RETRY_DASHBOARD_ENABLED', true),
+        'path'    => env('DB_TRANSACTION_RETRY_DASHBOARD_PATH', 'transaction-retry'),
+
+        'middleware' => [],
+    ],
+
+    'api' => [
+        'enabled'    => env('DB_TRANSACTION_RETRY_API_ENABLED', true),
+        'prefix'     => env('DB_TRANSACTION_RETRY_API_PREFIX', 'api/transaction-retry'),
+        'middleware' => [],
     ],
 
     /*
