@@ -7,6 +7,7 @@ use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Database\Events\TransactionBeginning;
 use Illuminate\Database\Events\TransactionCommitted;
 use Illuminate\Database\Events\TransactionRolledBack;
+use Illuminate\Foundation\Http\Events\RequestHandled;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -22,6 +23,9 @@ class SlowTransactionMonitor
     private ?string $logConnection;
     private bool $logEnabled;
     private ?string $logChannel;
+    private ?int $lastResponseStatus           = null;
+    private array $pendingLogIds               = [];
+    private ?bool $logTableHasHttpStatus       = null;
     private ?bool $queryTableHasLogCompletedAt = null;
 
     public function __construct(array $config)
@@ -109,6 +113,53 @@ class SlowTransactionMonitor
         $this->finalizeTransaction($event->connectionName ?? 'default', 'rolled_back');
     }
 
+    public function handleRequestHandled(RequestHandled $event): void
+    {
+        $status = null;
+
+        try {
+            $response = $event->response ?? null;
+            $status   = $response && method_exists($response, 'getStatusCode')
+                ? $response->getStatusCode()
+                : null;
+        } catch (Throwable) {
+            $status = null;
+        }
+
+        if (! is_int($status)) {
+            $this->pendingLogIds      = [];
+            $this->lastResponseStatus = null;
+
+            return;
+        }
+
+        if (! $this->logTableHasHttpStatus()) {
+            $this->pendingLogIds      = [];
+            $this->lastResponseStatus = null;
+
+            return;
+        }
+
+        $this->lastResponseStatus = $status;
+
+        if ($this->pendingLogIds === []) {
+            return;
+        }
+
+        try {
+            $db = $this->logConnection ? DB::connection($this->logConnection) : DB::connection();
+
+            $db->table($this->logTable)
+                ->whereIn('id', $this->pendingLogIds)
+                ->update(['http_status' => $status]);
+        } catch (Throwable) {
+            // ignore
+        }
+
+        $this->pendingLogIds      = [];
+        $this->lastResponseStatus = null;
+    }
+
     private function finalizeTransaction(string $connection, string $status): void
     {
         if (empty($this->transactionStacks[$connection])) {
@@ -144,6 +195,7 @@ class SlowTransactionMonitor
         $startedAt   = $context['started_at'] ?? $completedAt;
 
         $httpContext = $this->resolveHttpContext();
+        $httpStatus  = $this->resolveResponseStatus();
         $userId      = $this->resolveUserId();
 
         $logEntry = $this->writeTransactionLog([
@@ -160,7 +212,12 @@ class SlowTransactionMonitor
             'http_method'         => $httpContext['method']     ?? null,
             'url'                 => $httpContext['url']        ?? null,
             'ip_address'          => $httpContext['ip']         ?? null,
+            'http_status'         => $httpStatus,
         ]);
+
+        if (! is_null($logEntry) && $httpStatus === null && $this->logTableHasHttpStatus()) {
+            $this->pendingLogIds[] = (int) $logEntry['id'];
+        }
 
         if (! is_null($logEntry) && $slowQueriesCount > 0) {
             $this->writeSlowQueries($logEntry, $slowQueries);
@@ -179,6 +236,7 @@ class SlowTransactionMonitor
                 'method'             => $httpContext['method']     ?? null,
                 'url'                => $httpContext['url']        ?? null,
                 'ip_address'         => $httpContext['ip']         ?? null,
+                'http_status'        => $httpStatus,
                 'user_id'            => $userId,
                 'slow_queries'       => $this->sortedSlowQueries($slowQueries),
             ];
@@ -322,6 +380,11 @@ class SlowTransactionMonitor
         ];
     }
 
+    private function resolveResponseStatus(): ?int
+    {
+        return is_int($this->lastResponseStatus) ? $this->lastResponseStatus : null;
+    }
+
     private function writeTransactionLog(array $row): ?array
     {
         if (! class_exists(DB::class)) {
@@ -348,6 +411,10 @@ class SlowTransactionMonitor
             'ip_address'          => $row['ip_address']          ?? null,
         ];
 
+        if ($this->logTableHasHttpStatus()) {
+            $insert['http_status'] = $row['http_status'] ?? null;
+        }
+
         try {
             $db = $this->logConnection ? DB::connection($this->logConnection) : DB::connection();
 
@@ -364,6 +431,23 @@ class SlowTransactionMonitor
         } catch (Throwable) {
             return null;
         }
+    }
+
+    private function logTableHasHttpStatus(): bool
+    {
+        if (! is_null($this->logTableHasHttpStatus)) {
+            return $this->logTableHasHttpStatus;
+        }
+
+        try {
+            $db                          = $this->logConnection ? DB::connection($this->logConnection) : DB::connection();
+            $schema                      = $db->getSchemaBuilder();
+            $this->logTableHasHttpStatus = $schema->hasColumn($this->logTable, 'http_status');
+        } catch (Throwable) {
+            $this->logTableHasHttpStatus = false;
+        }
+
+        return $this->logTableHasHttpStatus;
     }
 
     private function writeSlowQueries(array $logEntry, array $slowQueries): void
