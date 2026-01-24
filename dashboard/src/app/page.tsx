@@ -355,6 +355,38 @@ const renderStatusCell = (
     );
 };
 
+const methodClassName = (method?: string | null): string => {
+    const normalized = method?.toUpperCase();
+
+    if (!normalized) {
+        return 'route-method--default';
+    }
+
+    if (normalized.includes('DELETE')) {
+        return 'route-method--delete';
+    }
+    if (normalized.includes('PATCH')) {
+        return 'route-method--patch';
+    }
+    if (normalized.includes('PUT')) {
+        return 'route-method--put';
+    }
+    if (normalized.includes('POST')) {
+        return 'route-method--post';
+    }
+    if (normalized.includes('GET') || normalized.includes('HEAD')) {
+        return 'route-method--get';
+    }
+    if (normalized.includes('OPTIONS')) {
+        return 'route-method--options';
+    }
+    if (normalized.includes('TRACE')) {
+        return 'route-method--trace';
+    }
+
+    return 'route-method--default';
+};
+
 const formatTooltipTimestamp = (
     timestamp: string | undefined,
     timeZone: string | null | undefined,
@@ -1325,9 +1357,13 @@ export default function Home() {
                                             key={`volume-${row.method ?? 'method'}-${row.route_name ?? row.url ?? 'unknown'}`}
                                         >
                                             <td>
-                                                {row.method
-                                                    ? row.method.toUpperCase()
-                                                    : '--'}
+                                                <span
+                                                    className={`route-method route-method--text ${methodClassName(row.method)}`}
+                                                >
+                                                    {row.method
+                                                        ? row.method.toUpperCase()
+                                                        : '--'}
+                                                </span>
                                             </td>
                                             <td>{formatRouteLabel(row)}</td>
                                             <td>{formatValue(row.status_1xx_3xx ?? 0)}</td>
@@ -1478,7 +1514,9 @@ export default function Home() {
                                             >
                                                 <td>
                                                     <div className="route-cell">
-                                                        <span className="route-method">
+                                                        <span
+                                                            className={`route-method ${methodClassName(row.method)}`}
+                                                        >
                                                             {row.method
                                                                 ? row.method.toUpperCase()
                                                                 : '--'}
