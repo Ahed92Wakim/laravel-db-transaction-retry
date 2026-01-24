@@ -105,9 +105,9 @@ h3 {
 }
 
 .sidebar__logo {
-  width: 170px;
+  height: 40px;
+  width: auto;
   max-width: 100%;
-  height: auto;
   display: block;
 }
 
@@ -159,6 +159,7 @@ h3 {
   cursor: pointer;
   text-align: left;
   font-family: inherit;
+  text-decoration: none;
 }
 
 .sidebar__item:hover {
@@ -174,6 +175,18 @@ h3 {
   border-color: rgba(255, 107, 45, 0.35);
   background: rgba(255, 107, 45, 0.12);
   color: var(--card-ink);
+}
+
+.sidebar__item--disabled,
+.sidebar__item:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.sidebar__item--disabled:hover,
+.sidebar__item:disabled:hover {
+  border-color: transparent;
+  background: transparent;
 }
 
 .sidebar__pill {
