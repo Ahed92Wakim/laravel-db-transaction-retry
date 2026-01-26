@@ -17,6 +17,9 @@ const bodyFont = Space_Grotesk({
 
 export const metadata = {
   title: 'Transaction Retry Dashboard',
+  icons: {
+    icon: '/transaction-retry/logo-cropped.svg',
+  },
 };
 
 const themeInitScript = `(function () {

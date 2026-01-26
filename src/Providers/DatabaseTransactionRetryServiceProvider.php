@@ -6,11 +6,15 @@ use DatabaseTransactions\RetryHelper\Console\InstallCommand;
 use DatabaseTransactions\RetryHelper\Console\RollPartitionsCommand;
 use DatabaseTransactions\RetryHelper\Console\StartRetryCommand;
 use DatabaseTransactions\RetryHelper\Console\StopRetryCommand;
+use DatabaseTransactions\RetryHelper\Support\QueryExceptionLogger;
 use DatabaseTransactions\RetryHelper\Support\SlowTransactionMonitor;
+use Illuminate\Contracts\Container\BindingResolutionException;
+use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Database\Events\TransactionBeginning;
 use Illuminate\Database\Events\TransactionCommitted;
 use Illuminate\Database\Events\TransactionRolledBack;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Http\Events\RequestHandled;
 use Illuminate\Support\ServiceProvider;
 
@@ -24,10 +28,14 @@ class DatabaseTransactionRetryServiceProvider extends ServiceProvider
         );
     }
 
+    /**
+     * @throws BindingResolutionException
+     */
     public function boot(): void
     {
         $this->registerRoutes();
         $this->registerSlowTransactionMonitor();
+        $this->registerQueryExceptionLogger();
 
         if ($this->app->runningInConsole()) {
             $this->registerPublishing();
@@ -93,6 +101,26 @@ class DatabaseTransactionRetryServiceProvider extends ServiceProvider
         }
     }
 
+    /**
+     * @throws BindingResolutionException
+     */
+    protected function registerQueryExceptionLogger(): void
+    {
+        if (! $this->app->bound(ExceptionHandler::class)) {
+            return;
+        }
+
+        $handler = $this->app->make(ExceptionHandler::class);
+
+        if (! method_exists($handler, 'reportable')) {
+            return;
+        }
+
+        $handler->reportable(function (QueryException $exception): void {
+            QueryExceptionLogger::report($exception);
+        });
+    }
+
     protected function registerPublishing(): void
     {
         $configPath = function_exists('config_path')
@@ -108,6 +136,8 @@ class DatabaseTransactionRetryServiceProvider extends ServiceProvider
             => $this->app->databasePath('migrations/2025_01_17_000000_create_transaction_retry_events_table.php'),
             __DIR__ . '/../../database/migrations/2025_01_17_000001_create_db_transaction_logs_tables.php'
             => $this->app->databasePath('migrations/2025_01_17_000001_create_db_transaction_logs_tables.php'),
+            __DIR__ . '/../../database/migrations/2025_01_17_000002_create_db_exceptions_table.php'
+            => $this->app->databasePath('migrations/2025_01_17_000002_create_db_exceptions_table.php'),
         ], 'database-transaction-retry-migrations');
 
         $providerPath = function_exists('app_path')

@@ -297,7 +297,6 @@ class TransactionRetryEventController
             return $row;
         });
 
-
         return response()->json([
             'data' => $rows,
             'meta' => [
