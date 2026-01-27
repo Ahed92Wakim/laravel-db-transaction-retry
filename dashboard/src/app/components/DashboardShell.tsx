@@ -2,9 +2,16 @@
 
 import Link from 'next/link';
 import {usePathname} from 'next/navigation';
-import {type ReactNode} from 'react';
+import {type ReactNode, useEffect, useMemo, useState} from 'react';
 import {useTheme} from './ThemeProvider';
-import {timeRanges, type TimeRangeValue} from '../lib/dashboard';
+import {
+  apiBase,
+  formatOptionalNumber,
+  resolveTimeWindow,
+  timeRanges,
+  toCount,
+  type TimeRangeValue,
+} from '../lib/dashboard';
 
 const navItems: Array<{
   label: string;
@@ -13,18 +20,16 @@ const navItems: Array<{
   tone?: 'warn';
   disabled?: boolean;
 }> = [
-  {label: 'Overview', href: '/overview'},
-  {label: 'Retry traffic', href: '/retry-traffic', badge: 'Live'},
-  {label: 'Queue health', badge: '243', disabled: true},
-  {label: 'Replica lag', disabled: true},
-  {label: 'Alerts', badge: '7', tone: 'warn', disabled: true},
+  {label: 'Transactions', href: '/transactions'},
+  {label: 'Retry traffic', href: '/retry-traffic'},
+  {label: 'DB exceptions', href: '/db-exceptions'},
 ];
 
-const statusItems = [
-  {label: 'Primary DB', value: 'Stable', tone: 'ok'},
-  {label: 'Write locks', value: '3 hotspots', tone: 'warn'},
-  {label: 'Auto throttle', value: 'Enabled'},
-];
+type StatusItem = {
+  label: string;
+  value: string;
+  tone?: 'ok' | 'warn';
+};
 
 type DashboardShellProps = {
   timeRange: TimeRangeValue;
@@ -41,6 +46,88 @@ export default function DashboardShell({
 }: DashboardShellProps) {
   const pathname = usePathname();
   const {theme, toggleTheme} = useTheme();
+  const [issuesCount, setIssuesCount] = useState<number | null>(null);
+  const [retryAttemptCount, setRetryAttemptCount] = useState<number | null>(null);
+  const [retryFailureCount, setRetryFailureCount] = useState<number | null>(null);
+  const timeWindow = useMemo(() => resolveTimeWindow(timeRange), [timeRange]);
+  const rangeQuery = useMemo(() => {
+    const params = new URLSearchParams({
+      from: timeWindow.from.toISOString(),
+      to: timeWindow.to.toISOString(),
+      window: timeRange,
+    });
+
+    return params.toString();
+  }, [timeRange, timeWindow]);
+  const statusItems: StatusItem[] = useMemo(() => {
+    const issuesValue = formatOptionalNumber(issuesCount);
+    const issuesTone =
+      issuesCount == null ? undefined : issuesCount > 0 ? 'warn' : 'ok';
+    const retryAttemptsValue = formatOptionalNumber(retryAttemptCount);
+    const retryFailuresValue = formatOptionalNumber(retryFailureCount);
+    const retryFailuresTone =
+      retryFailureCount == null ? undefined : retryFailureCount > 0 ? 'warn' : 'ok';
+
+    return [
+      {label: 'Issues (unique)', value: issuesValue, tone: issuesTone},
+      {label: 'Retry failures', value: retryFailuresValue, tone: retryFailuresTone},
+      {label: 'Retry attempts', value: retryAttemptsValue},
+    ];
+  }, [issuesCount, retryAttemptCount, retryFailureCount]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    const load = async () => {
+      setIssuesCount(null);
+      setRetryAttemptCount(null);
+      setRetryFailureCount(null);
+
+      try {
+        const [exceptionsResult, todayResult] = await Promise.allSettled([
+          fetch(`${apiBase}/metrics/exceptions?${rangeQuery}&limit=1`, {
+            signal: controller.signal,
+            headers: {Accept: 'application/json'},
+          }),
+          fetch(`${apiBase}/metrics/today?${rangeQuery}`, {
+            signal: controller.signal,
+            headers: {Accept: 'application/json'},
+          }),
+        ]);
+
+        if (exceptionsResult.status === 'fulfilled' && exceptionsResult.value.ok) {
+          const payload = (await exceptionsResult.value.json()) as {
+            data?: unknown[];
+            meta?: {unique?: number | string};
+          };
+          const unique =
+            payload?.meta?.unique ?? (Array.isArray(payload?.data) ? payload.data.length : null);
+          setIssuesCount(unique == null ? null : toCount(unique));
+        }
+
+        if (todayResult.status === 'fulfilled' && todayResult.value.ok) {
+          const payload = (await todayResult.value.json()) as {
+            data?: {
+              attempt_records?: number | string;
+              failure_records?: number | string;
+            };
+          };
+          setRetryAttemptCount(toCount(payload?.data?.attempt_records ?? 0));
+          setRetryFailureCount(toCount(payload?.data?.failure_records ?? 0));
+        }
+      } catch (error) {
+        if ((error as Error).name !== 'AbortError') {
+          setIssuesCount(null);
+          setRetryAttemptCount(null);
+          setRetryFailureCount(null);
+        }
+      }
+    };
+
+    load();
+
+    return () => controller.abort();
+  }, [rangeQuery]);
 
   return (
     <main className="dashboard-shell">

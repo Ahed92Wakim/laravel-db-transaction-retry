@@ -34,6 +34,8 @@ import {
   type TimeRangeValue,
 } from '../lib/dashboard';
 
+const routeVolumePageSize = 10;
+
 export default function OverviewPage() {
   const [clientTimeZone, setClientTimeZone] = useState<string | null>(null);
   const [timeRange, setTimeRange] = useState<TimeRangeValue>('24h');
@@ -41,6 +43,7 @@ export default function OverviewPage() {
   const [routeVolumeStatus, setRouteVolumeStatus] = useState<'idle' | 'loading' | 'error'>(
     'idle'
   );
+  const [routeVolumePage, setRouteVolumePage] = useState<number>(1);
   const [queryMetrics, setQueryMetrics] = useState<QueryMetric[]>([]);
   const [queryMetricsBucket, setQueryMetricsBucket] = useState<Bucket | null>(null);
   const [queryMetricsStatus, setQueryMetricsStatus] = useState<'idle' | 'loading' | 'error'>(
@@ -226,6 +229,16 @@ export default function OverviewPage() {
         : routeVolumeMetrics.length === 0
           ? 'No routes recorded in this window.'
           : null;
+  const routeVolumeTotalPages = Math.max(
+    1,
+    Math.ceil(routeVolumeMetrics.length / routeVolumePageSize)
+  );
+  const currentRouteVolumePage = Math.min(routeVolumePage, routeVolumeTotalPages);
+  const routeVolumeStartIndex = (currentRouteVolumePage - 1) * routeVolumePageSize;
+  const routeVolumePageRows = routeVolumeMetrics.slice(
+    routeVolumeStartIndex,
+    routeVolumeStartIndex + routeVolumePageSize
+  );
   const queryMetricsDisplay = useMemo(
     () =>
       queryMetrics.map((point) => ({
@@ -304,6 +317,14 @@ export default function OverviewPage() {
           queryDurationSummary.maxP95
         )}`
       : '--';
+
+  useEffect(() => {
+    setRouteVolumePage(1);
+  }, [timeRange, routeVolumeMetrics.length]);
+
+  useEffect(() => {
+    setRouteVolumePage((prev) => Math.min(prev, routeVolumeTotalPages));
+  }, [routeVolumeTotalPages]);
 
   return (
     <DashboardShell
@@ -460,47 +481,79 @@ export default function OverviewPage() {
       <section className="route-table route-table--compact">
         <div className="route-table__header">
           <p className="route-table__title">Routes</p>
-          <span className="route-table__meta">{rangeShortLabel} window</span>
+          <span className="route-table__meta">
+            {rangeShortLabel} window · {formatValue(routeVolumeMetrics.length)} routes · page{' '}
+            {currentRouteVolumePage} of {routeVolumeTotalPages}
+          </span>
         </div>
         {routeVolumeMessage ? (
           <p className="route-table__empty">{routeVolumeMessage}</p>
         ) : (
-          <div className="route-table__scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Method</th>
-                  <th>Path</th>
-                  <th>1/2/3xx</th>
-                  <th>4xx</th>
-                  <th>5xx</th>
-                  <th>Total</th>
-                  <th>Avg</th>
-                  <th>P95</th>
-                </tr>
-              </thead>
-              <tbody>
-                {routeVolumeMetrics.map((row) => (
-                  <tr key={`volume-${row.method ?? 'method'}-${row.route_name ?? row.url ?? 'unknown'}`}>
-                    <td>
-                      <span
-                        className={`route-method route-method--text ${methodClassName(row.method)}`}
-                      >
-                        {row.method ? row.method.toUpperCase() : '--'}
-                      </span>
-                    </td>
-                    <td>{formatRouteLabel(row)}</td>
-                    <td>{formatValue(row.status_1xx_3xx ?? 0)}</td>
-                    <td>{renderStatusCell(row.status_4xx, 'warn')}</td>
-                    <td>{renderStatusCell(row.status_5xx, 'error')}</td>
-                    <td>{formatValue(row.total ?? 0)}</td>
-                    <td>{formatDurationMs(row.avg_ms)}</td>
-                    <td>{formatDurationMs(row.p95_ms)}</td>
+          <>
+            <div className="route-table__scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Method</th>
+                    <th>Path</th>
+                    <th>1/2/3xx</th>
+                    <th>4xx</th>
+                    <th>5xx</th>
+                    <th>Total</th>
+                    <th>Avg</th>
+                    <th>P95</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {routeVolumePageRows.map((row) => (
+                    <tr
+                      key={`volume-${row.method ?? 'method'}-${row.route_name ?? row.url ?? 'unknown'}`}
+                    >
+                      <td>
+                        <span
+                          className={`route-method route-method--text ${methodClassName(row.method)}`}
+                        >
+                          {row.method ? row.method.toUpperCase() : '--'}
+                        </span>
+                      </td>
+                      <td>{formatRouteLabel(row)}</td>
+                      <td>{formatValue(row.status_1xx_3xx ?? 0)}</td>
+                      <td>{renderStatusCell(row.status_4xx, 'warn')}</td>
+                      <td>{renderStatusCell(row.status_5xx, 'error')}</td>
+                      <td>{formatValue(row.total ?? 0)}</td>
+                      <td>{formatDurationMs(row.avg_ms)}</td>
+                      <td>{formatDurationMs(row.p95_ms)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="table-footer">
+              <span className="table-footer__meta">
+                Showing {routeVolumePageRows.length} of {formatValue(routeVolumeMetrics.length)}
+              </span>
+              <div className="table-footer__actions">
+                <button
+                  type="button"
+                  className="pagination-button"
+                  onClick={() => setRouteVolumePage((prev) => Math.max(1, prev - 1))}
+                  disabled={currentRouteVolumePage <= 1}
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  className="pagination-button"
+                  onClick={() =>
+                    setRouteVolumePage((prev) => Math.min(routeVolumeTotalPages, prev + 1))
+                  }
+                  disabled={currentRouteVolumePage >= routeVolumeTotalPages}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </>
         )}
       </section>
     </DashboardShell>

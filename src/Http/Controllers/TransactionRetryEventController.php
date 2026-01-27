@@ -297,7 +297,6 @@ class TransactionRetryEventController
             return $row;
         });
 
-
         return response()->json([
             'data' => $rows,
             'meta' => [
@@ -305,6 +304,244 @@ class TransactionRetryEventController
                 'to'     => $end->toIso8601String(),
                 'window' => $window,
                 'limit'  => $limit,
+            ],
+        ]);
+    }
+
+    public function exceptions(Request $request): JsonResponse
+    {
+        $table                  = (string)config('database-transaction-retry.exception_logging.table', 'db_exceptions');
+        $connection             = $this->resolveExceptionLoggingConnection();
+        [$start, $end, $window] = $this->resolveRange($request, '24h');
+        $limit                  = min(max((int)$request->query('limit', 50), 1), 200);
+        $driver                 = $connection->getDriverName();
+        $bucket                 = $this->bucketForWindow($window, $start, $end);
+        $bucketExpression       = $this->bucketExpression($bucket, $driver);
+        $bucketFormat           = $this->bucketFormat($bucket);
+        $labelFormat            = $this->labelFormat($bucket);
+        $userKeyExpression      = $this->userKeyExpression($driver);
+
+        if ($table === '') {
+            return response()->json([
+                'data' => [],
+                'meta' => [
+                    'from'              => $start->toIso8601String(),
+                    'to'                => $end->toIso8601String(),
+                    'window'            => $window,
+                    'bucket'            => $bucket,
+                    'limit'             => $limit,
+                    'unique'            => 0,
+                    'users'             => 0,
+                    'total_occurrences' => 0,
+                    'handled'           => 0,
+                    'unhandled'         => 0,
+                    'last_seen'         => null,
+                    'series'            => [],
+                ],
+            ]);
+        }
+
+        $baseQuery = $connection->table($table)
+            ->whereNotNull('occurred_at')
+            ->where('occurred_at', '>=', $start)
+            ->where('occurred_at', '<=', $end);
+
+        $uniqueCount = (clone $baseQuery)
+            ->whereNotNull('event_hash')
+            ->distinct()
+            ->count('event_hash');
+
+        $uniqueUsers = (clone $baseQuery)
+            ->selectRaw("COUNT(DISTINCT {$userKeyExpression}) as users")
+            ->value('users');
+
+        $totals = (clone $baseQuery)
+            ->selectRaw('COUNT(*) as occurrences')
+            ->selectRaw('MAX(occurred_at) as last_seen')
+            ->first();
+
+        $rows = (clone $baseQuery)
+            ->selectRaw('ANY_VALUE(exception_class) as exception_class')
+            ->selectRaw('ANY_VALUE(error_message) as error_message')
+            ->selectRaw('ANY_VALUE(sql_state) as sql_state')
+            ->selectRaw('ANY_VALUE(driver_code) as driver_code')
+            ->selectRaw('ANY_VALUE(connection) as connection')
+            ->selectRaw('ANY_VALUE(method) as method')
+            ->selectRaw('ANY_VALUE(route_name) as route_name')
+            ->selectRaw('ANY_VALUE(url) as url')
+            ->selectRaw('event_hash as event_hash')
+            ->selectRaw('COUNT(*) as occurrences')
+            ->selectRaw("COUNT(DISTINCT {$userKeyExpression}) as users")
+            ->selectRaw('MAX(occurred_at) as last_seen')
+            ->groupBy('event_hash')
+            ->orderByDesc('occurrences')
+            ->orderByDesc('last_seen')
+            ->limit($limit)
+            ->get();
+
+        $seriesRows = (clone $baseQuery)
+            ->selectRaw("{$bucketExpression} as bucket")
+            ->selectRaw('COUNT(*) as count')
+            ->groupBy('bucket')
+            ->orderBy('bucket')
+            ->get();
+
+        $metricsByBucket = [];
+        foreach ($seriesRows as $row) {
+            $metricsByBucket[(string)$row->bucket] = (int)$row->count;
+        }
+
+        $seriesStart = $this->alignToBucket($start, $bucket);
+        $seriesEnd   = $this->alignToBucket($end, $bucket);
+
+        $series = [];
+        $cursor = $seriesStart->copy();
+        while ($cursor->lte($seriesEnd)) {
+            $bucketKey = $cursor->format($bucketFormat);
+            $series[]  = [
+                'time'      => $cursor->format($labelFormat),
+                'timestamp' => $cursor->toIso8601String(),
+                'count'     => $metricsByBucket[$bucketKey] ?? 0,
+            ];
+
+            $cursor = $this->advanceCursor($cursor, $bucket);
+        }
+
+        $totalOccurrences = (int)($totals?->occurrences ?? 0);
+        $lastSeen         = $totals?->last_seen ?? null;
+
+        return response()->json([
+            'data' => $rows,
+            'meta' => [
+                'from'              => $start->toIso8601String(),
+                'to'                => $end->toIso8601String(),
+                'window'            => $window,
+                'bucket'            => $bucket,
+                'limit'             => $limit,
+                'unique'            => $uniqueCount,
+                'users'             => is_numeric($uniqueUsers) ? (int)$uniqueUsers : 0,
+                'total_occurrences' => $totalOccurrences,
+                'handled'           => 0,
+                'unhandled'         => $totalOccurrences,
+                'last_seen'         => $lastSeen,
+                'series'            => $series,
+            ],
+        ]);
+    }
+
+    public function exceptionGroup(Request $request, string $eventHash): JsonResponse
+    {
+        $table                  = (string)config('database-transaction-retry.exception_logging.table', 'db_exceptions');
+        $connection             = $this->resolveExceptionLoggingConnection();
+        [$start, $end, $window] = $this->resolveRange($request, '24h');
+        $perPage                = min(max((int)$request->query('per_page', 20), 1), 200);
+        $page                   = max((int)$request->query('page', 1), 1);
+
+        $bucket           = $this->bucketForWindow($window, $start, $end);
+        $driver           = $connection->getDriverName();
+        $bucketExpression = $this->bucketExpression($bucket, $driver);
+        $bucketFormat     = $this->bucketFormat($bucket);
+        $labelFormat      = $this->labelFormat($bucket);
+
+        if ($table === '') {
+            return response()->json([
+                'data' => [
+                    'group'       => null,
+                    'occurrences' => [],
+                    'series'      => [],
+                ],
+                'meta' => [
+                    'from'     => $start->toIso8601String(),
+                    'to'       => $end->toIso8601String(),
+                    'window'   => $window,
+                    'bucket'   => $bucket,
+                    'page'     => $page,
+                    'per_page' => $perPage,
+                    'total'    => 0,
+                ],
+            ]);
+        }
+
+        $baseQuery = $connection->table($table)
+            ->whereNotNull('occurred_at')
+            ->where('occurred_at', '>=', $start)
+            ->where('occurred_at', '<=', $end)
+            ->where('event_hash', $eventHash);
+
+        $summary = (clone $baseQuery)
+            ->selectRaw('ANY_VALUE(exception_class) as exception_class')
+            ->selectRaw('ANY_VALUE(error_message) as error_message')
+            ->selectRaw('ANY_VALUE(sql_state) as sql_state')
+            ->selectRaw('ANY_VALUE(driver_code) as driver_code')
+            ->selectRaw('ANY_VALUE(connection) as connection')
+            ->selectRaw('ANY_VALUE(db_exceptions.sql) as `sql`')
+            ->selectRaw('COUNT(*) as occurrences')
+            ->selectRaw('MAX(occurred_at) as last_seen')
+            ->first();
+
+        $paginator = (clone $baseQuery)
+            ->select([
+                'id',
+                'occurred_at',
+                'sql',
+                'raw_sql',
+                'error_message',
+                'method',
+                'route_name',
+                'url',
+                'user_type',
+                'user_id',
+                'connection',
+                'sql_state',
+                'driver_code',
+                'event_hash',
+            ])
+            ->orderByDesc('occurred_at')
+            ->orderByDesc('id')
+            ->paginate($perPage, ['*'], 'page', $page);
+
+        $seriesRows = (clone $baseQuery)
+            ->selectRaw("{$bucketExpression} as bucket")
+            ->selectRaw('COUNT(*) as count')
+            ->groupBy('bucket')
+            ->orderBy('bucket')
+            ->get();
+
+        $metricsByBucket = [];
+        foreach ($seriesRows as $row) {
+            $metricsByBucket[(string)$row->bucket] = (int)$row->count;
+        }
+
+        $seriesStart = $this->alignToBucket($start, $bucket);
+        $seriesEnd   = $this->alignToBucket($end, $bucket);
+
+        $series = [];
+        $cursor = $seriesStart->copy();
+        while ($cursor->lte($seriesEnd)) {
+            $bucketKey = $cursor->format($bucketFormat);
+            $series[]  = [
+                'time'      => $cursor->format($labelFormat),
+                'timestamp' => $cursor->toIso8601String(),
+                'count'     => $metricsByBucket[$bucketKey] ?? 0,
+            ];
+
+            $cursor = $this->advanceCursor($cursor, $bucket);
+        }
+
+        return response()->json([
+            'data' => [
+                'group'       => $summary,
+                'occurrences' => $paginator->items(),
+                'series'      => $series,
+            ],
+            'meta' => [
+                'from'     => $start->toIso8601String(),
+                'to'       => $end->toIso8601String(),
+                'window'   => $window,
+                'bucket'   => $bucket,
+                'page'     => $paginator->currentPage(),
+                'per_page' => $paginator->perPage(),
+                'total'    => $paginator->total(),
             ],
         ]);
     }
@@ -575,6 +812,18 @@ class TransactionRetryEventController
         };
     }
 
+    private function userKeyExpression(string $driver): string
+    {
+        $driver = strtolower($driver);
+
+        $concatExpression = match ($driver) {
+            'pgsql', 'sqlite' => "COALESCE(user_type, '') || ':' || COALESCE(user_id, '')",
+            default => "CONCAT_WS(':', COALESCE(user_type, ''), COALESCE(user_id, ''))",
+        };
+
+        return "CASE WHEN user_id IS NULL OR user_id = '' THEN NULL ELSE {$concatExpression} END";
+    }
+
     private function bucketFormat(string $bucket): string
     {
         return match (strtolower($bucket)) {
@@ -638,6 +887,15 @@ class TransactionRetryEventController
     private function resolveSlowTransactionConnection()
     {
         $connectionName = config('database-transaction-retry.slow_transactions.log_connection');
+
+        return is_string($connectionName) && $connectionName !== ''
+            ? DB::connection($connectionName)
+            : DB::connection();
+    }
+
+    private function resolveExceptionLoggingConnection()
+    {
+        $connectionName = config('database-transaction-retry.exception_logging.connection');
 
         return is_string($connectionName) && $connectionName !== ''
             ? DB::connection($connectionName)

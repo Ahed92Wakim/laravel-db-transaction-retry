@@ -58,6 +58,23 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Query Exception Logging
+    |--------------------------------------------------------------------------
+    |
+    | Persist unhandled database query exceptions to a dedicated table for
+    | later inspection. This hooks into Laravel's exception reporting pipeline
+    | through the package service provider.
+    |
+    */
+
+    'exception_logging' => [
+        'enabled'    => env('DB_QUERY_EXCEPTION_LOG_ENABLED', true),
+        'table'      => env('DB_QUERY_EXCEPTION_LOG_TABLE', 'db_exceptions'),
+        'connection' => env('DB_QUERY_EXCEPTION_LOG_CONNECTION'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Slow Transaction Monitoring
     |--------------------------------------------------------------------------
     |

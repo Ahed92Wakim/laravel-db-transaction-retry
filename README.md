@@ -194,8 +194,9 @@ The migration creates hourly partitions for MySQL. Keep partitions rolling by sc
 ```php
 use Illuminate\Support\Facades\Schedule;
 
-Schedule::command('db-transaction-retry:roll-partitions')->hourly();
-Schedule::command('db-transaction-retry:roll-log-partitions')->hourly();
+Schedule::command('db-transaction-retry:roll-partitions --hours=24 --table=transaction_retry_events')->hourly();
+Schedule::command('db-transaction-retry:roll-partitions --hours=24 --table=db_transaction_logs')->hourly();
+Schedule::command('db-transaction-retry:roll-partitions --hours=24 --table=db_exceptions')->hourly();
 ```
 
 Make sure your scheduler is running (for example, the standard `schedule:run` cron).

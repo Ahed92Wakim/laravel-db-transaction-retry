@@ -3,14 +3,9 @@
 import {useEffect, useMemo, useState} from 'react';
 import {
   Area,
-  Bar,
-  BarChart,
   CartesianGrid,
-  Cell,
   ComposedChart,
   Line,
-  Pie,
-  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -35,34 +30,10 @@ import {
   type TimeRangeValue,
 } from '../lib/dashboard';
 
-const errorCodes = [
-  {code: '400', count: 36},
-  {code: '401', count: 14},
-  {code: '409', count: 42},
-  {code: '429', count: 58},
-  {code: '500', count: 21},
-  {code: '503', count: 27},
-];
-
-const retryReasons = [
-  {name: 'Deadlock', value: 38},
-  {name: 'Lock timeout', value: 26},
-  {name: 'Network jitter', value: 18},
-  {name: 'Replica lag', value: 12},
-  {name: 'Unknown', value: 6},
-];
-
 const kpiBase = [
   {label: 'Escalations', value: '7', delta: '+2 incidents', down: true},
 ];
-
-const donutColors = [
-  'var(--accent)',
-  'var(--accent-cool)',
-  'var(--accent-gold)',
-  '#4d7c8a',
-  '#5f6b89',
-];
+const routeMetricsPageSize = 10;
 
 export default function RetryTrafficPage() {
   const [clientTimeZone, setClientTimeZone] = useState<string | null>(null);
@@ -87,6 +58,7 @@ export default function RetryTrafficPage() {
   const [routeMetricsStatus, setRouteMetricsStatus] = useState<'idle' | 'loading' | 'error'>(
     'idle'
   );
+  const [routeMetricsPage, setRouteMetricsPage] = useState<number>(1);
 
   const selectedRange =
     timeRanges.find((range) => range.value === timeRange) ?? timeRanges[1];
@@ -318,6 +290,24 @@ export default function RetryTrafficPage() {
         : routeMetrics.length === 0
           ? 'No route retries in this window.'
           : null;
+  const routeMetricsTotalPages = Math.max(
+    1,
+    Math.ceil(routeMetrics.length / routeMetricsPageSize)
+  );
+  const currentRouteMetricsPage = Math.min(routeMetricsPage, routeMetricsTotalPages);
+  const routeMetricsStartIndex = (currentRouteMetricsPage - 1) * routeMetricsPageSize;
+  const routeMetricsPageRows = routeMetrics.slice(
+    routeMetricsStartIndex,
+    routeMetricsStartIndex + routeMetricsPageSize
+  );
+
+  useEffect(() => {
+    setRouteMetricsPage(1);
+  }, [timeRange, routeMetrics.length]);
+
+  useEffect(() => {
+    setRouteMetricsPage((prev) => Math.min(prev, routeMetricsTotalPages));
+  }, [routeMetricsTotalPages]);
 
   return (
     <DashboardShell
@@ -339,7 +329,7 @@ export default function RetryTrafficPage() {
         ))}
       </section>
 
-      <section className="grid charts">
+      <section className="grid charts charts--pair">
         <div className="card chart-card chart-card--wide">
           <div className="card-header">
             <div>
@@ -404,39 +394,44 @@ export default function RetryTrafficPage() {
             </span>
           </div>
         </div>
-        <div className="route-table chart-card--wide">
-          <div className="route-table__header">
-            <p className="route-table__title">Routes with retries</p>
-            <span className="route-table__meta">Top {routeMetricsLimit}</span>
-          </div>
-          {routeMetricsMessage ? (
-            <p className="route-table__empty">{routeMetricsMessage}</p>
-          ) : (
+      </section>
+
+      <section className="route-table route-table--compact">
+        <div className="route-table__header">
+          <p className="route-table__title">Routes with retries</p>
+          <span className="route-table__meta">
+            {rangeShortLabel} window · {formatValue(routeMetrics.length)} routes · page{' '}
+            {currentRouteMetricsPage} of {routeMetricsTotalPages}
+          </span>
+        </div>
+        {routeMetricsMessage ? (
+          <p className="route-table__empty">{routeMetricsMessage}</p>
+        ) : (
+          <>
             <div className="route-table__scroll">
               <table>
                 <thead>
                   <tr>
-                    <th>Route</th>
+                    <th>Method</th>
+                    <th>Path</th>
                     <th>Attempts</th>
                     <th>Success</th>
                     <th>Failure</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {routeMetrics.map((row) => (
+                  {routeMetricsPageRows.map((row) => (
                     <tr
                       key={`${row.route_hash ?? 'route'}-${row.method ?? 'method'}-${row.route_name ?? row.url ?? 'unknown'}`}
                     >
                       <td>
-                        <div className="route-cell">
-                          <span className={`route-method ${methodClassName(row.method)}`}>
-                            {row.method ? row.method.toUpperCase() : '--'}
-                          </span>
-                          <span className="route-name" title={formatRouteLabel(row)}>
-                            {formatRouteLabel(row)}
-                          </span>
-                        </div>
+                        <span
+                          className={`route-method route-method--text ${methodClassName(row.method)}`}
+                        >
+                          {row.method ? row.method.toUpperCase() : '--'}
+                        </span>
                       </td>
+                      <td>{formatRouteLabel(row)}</td>
                       <td>{formatValue(row.attempts)}</td>
                       <td>{formatValue(row.success)}</td>
                       <td>{formatValue(row.failure)}</td>
@@ -445,70 +440,33 @@ export default function RetryTrafficPage() {
                 </tbody>
               </table>
             </div>
-          )}
-        </div>
-
-        <div className="card chart-card">
-          <div className="card-header">
-            <div>
-              <p className="card-title">Failure codes</p>
-              <p className="card-subtitle">Distribution of error responses - {rangeLabel}</p>
-            </div>
-            <span className="card-chip">{rangeShortLabel}</span>
-          </div>
-          <div className="chart-frame">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={errorCodes} margin={{top: 10, right: 20, left: 0, bottom: 0}}>
-                <CartesianGrid stroke="rgba(15, 23, 42, 0.08)" strokeDasharray="3 3" />
-                <XAxis dataKey="code" tickLine={false} axisLine={false} />
-                <YAxis tickLine={false} axisLine={false} />
-                <Tooltip content={<ChartTooltip />} />
-                <Bar dataKey="count" radius={[10, 10, 4, 4]} fill="var(--accent-gold)" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-          <p className="chart-footnote">429 and 409 are trending up.</p>
-        </div>
-
-        <div className="card chart-card">
-          <div className="card-header">
-            <div>
-              <p className="card-title">Retry reasons</p>
-              <p className="card-subtitle">What triggers the backoff - {rangeLabel}</p>
-            </div>
-            <span className="card-chip">{rangeShortLabel}</span>
-          </div>
-          <div className="chart-frame">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Tooltip content={<ChartTooltip />} />
-                <Pie
-                  data={retryReasons}
-                  dataKey="value"
-                  nameKey="name"
-                  innerRadius={55}
-                  outerRadius={90}
-                  paddingAngle={4}
-                >
-                  {retryReasons.map((entry, index) => (
-                    <Cell key={entry.name} fill={donutColors[index % donutColors.length]} />
-                  ))}
-                </Pie>
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="legend">
-            {retryReasons.map((reason, index) => (
-              <span key={reason.name}>
-                <span
-                  className="legend-dot"
-                  style={{background: donutColors[index % donutColors.length]}}
-                />
-                {reason.name}
+            <div className="table-footer">
+              <span className="table-footer__meta">
+                Showing {routeMetricsPageRows.length} of {formatValue(routeMetrics.length)}
               </span>
-            ))}
-          </div>
-        </div>
+              <div className="table-footer__actions">
+                <button
+                  type="button"
+                  className="pagination-button"
+                  onClick={() => setRouteMetricsPage((prev) => Math.max(1, prev - 1))}
+                  disabled={currentRouteMetricsPage <= 1}
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  className="pagination-button"
+                  onClick={() =>
+                    setRouteMetricsPage((prev) => Math.min(routeMetricsTotalPages, prev + 1))
+                  }
+                  disabled={currentRouteMetricsPage >= routeMetricsTotalPages}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </>
+        )}
       </section>
     </DashboardShell>
   );
