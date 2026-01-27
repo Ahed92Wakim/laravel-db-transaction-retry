@@ -59,14 +59,10 @@ class QueryExceptionLogger
 
         $eventHash = static::hashFromParts([
             $exceptionClass,
+            $exception->getMessage(),
             strtoupper($sqlState),
             $driverCode,
-            $connectionName,
-            $rawSql,
-            $request['method'],
-            $request['route_name'],
-            $request['url'],
-            $request['user_id'],
+            $sql,
         ]);
 
         $context = [
