@@ -314,16 +314,29 @@ class TransactionRetryEventController
         $connection             = $this->resolveExceptionLoggingConnection();
         [$start, $end, $window] = $this->resolveRange($request, '24h');
         $limit                  = min(max((int)$request->query('limit', 50), 1), 200);
+        $driver                 = $connection->getDriverName();
+        $bucket                 = $this->bucketForWindow($window, $start, $end);
+        $bucketExpression       = $this->bucketExpression($bucket, $driver);
+        $bucketFormat           = $this->bucketFormat($bucket);
+        $labelFormat            = $this->labelFormat($bucket);
+        $userKeyExpression      = $this->userKeyExpression($driver);
 
         if ($table === '') {
             return response()->json([
                 'data' => [],
                 'meta' => [
-                    'from'   => $start->toIso8601String(),
-                    'to'     => $end->toIso8601String(),
-                    'window' => $window,
-                    'limit'  => $limit,
-                    'unique' => 0,
+                    'from'              => $start->toIso8601String(),
+                    'to'                => $end->toIso8601String(),
+                    'window'            => $window,
+                    'bucket'            => $bucket,
+                    'limit'             => $limit,
+                    'unique'            => 0,
+                    'users'             => 0,
+                    'total_occurrences' => 0,
+                    'handled'           => 0,
+                    'unhandled'         => 0,
+                    'last_seen'         => null,
+                    'series'            => [],
                 ],
             ]);
         }
@@ -338,6 +351,15 @@ class TransactionRetryEventController
             ->distinct()
             ->count('event_hash');
 
+        $uniqueUsers = (clone $baseQuery)
+            ->selectRaw("COUNT(DISTINCT {$userKeyExpression}) as users")
+            ->value('users');
+
+        $totals = (clone $baseQuery)
+            ->selectRaw('COUNT(*) as occurrences')
+            ->selectRaw('MAX(occurred_at) as last_seen')
+            ->first();
+
         $rows = (clone $baseQuery)
             ->selectRaw('ANY_VALUE(exception_class) as exception_class')
             ->selectRaw('ANY_VALUE(error_message) as error_message')
@@ -349,6 +371,7 @@ class TransactionRetryEventController
             ->selectRaw('ANY_VALUE(url) as url')
             ->selectRaw('event_hash as event_hash')
             ->selectRaw('COUNT(*) as occurrences')
+            ->selectRaw("COUNT(DISTINCT {$userKeyExpression}) as users")
             ->selectRaw('MAX(occurred_at) as last_seen')
             ->groupBy('event_hash')
             ->orderByDesc('occurrences')
@@ -356,14 +379,52 @@ class TransactionRetryEventController
             ->limit($limit)
             ->get();
 
+        $seriesRows = (clone $baseQuery)
+            ->selectRaw("{$bucketExpression} as bucket")
+            ->selectRaw('COUNT(*) as count')
+            ->groupBy('bucket')
+            ->orderBy('bucket')
+            ->get();
+
+        $metricsByBucket = [];
+        foreach ($seriesRows as $row) {
+            $metricsByBucket[(string)$row->bucket] = (int)$row->count;
+        }
+
+        $seriesStart = $this->alignToBucket($start, $bucket);
+        $seriesEnd   = $this->alignToBucket($end, $bucket);
+
+        $series = [];
+        $cursor = $seriesStart->copy();
+        while ($cursor->lte($seriesEnd)) {
+            $bucketKey = $cursor->format($bucketFormat);
+            $series[]  = [
+                'time'      => $cursor->format($labelFormat),
+                'timestamp' => $cursor->toIso8601String(),
+                'count'     => $metricsByBucket[$bucketKey] ?? 0,
+            ];
+
+            $cursor = $this->advanceCursor($cursor, $bucket);
+        }
+
+        $totalOccurrences = (int)($totals?->occurrences ?? 0);
+        $lastSeen         = $totals?->last_seen ?? null;
+
         return response()->json([
             'data' => $rows,
             'meta' => [
-                'from'   => $start->toIso8601String(),
-                'to'     => $end->toIso8601String(),
-                'window' => $window,
-                'limit'  => $limit,
-                'unique' => $uniqueCount,
+                'from'              => $start->toIso8601String(),
+                'to'                => $end->toIso8601String(),
+                'window'            => $window,
+                'bucket'            => $bucket,
+                'limit'             => $limit,
+                'unique'            => $uniqueCount,
+                'users'             => is_numeric($uniqueUsers) ? (int)$uniqueUsers : 0,
+                'total_occurrences' => $totalOccurrences,
+                'handled'           => 0,
+                'unhandled'         => $totalOccurrences,
+                'last_seen'         => $lastSeen,
+                'series'            => $series,
             ],
         ]);
     }
@@ -749,6 +810,18 @@ class TransactionRetryEventController
             '8hour'    => "DATE_FORMAT(DATE_ADD(DATE({$column}), INTERVAL FLOOR(HOUR({$column}) / 8) * 8 HOUR), '%Y-%m-%d %H:00:00')",
             default    => "DATE_FORMAT({$column}, '%Y-%m-%d 00:00:00')",
         };
+    }
+
+    private function userKeyExpression(string $driver): string
+    {
+        $driver = strtolower($driver);
+
+        $concatExpression = match ($driver) {
+            'pgsql', 'sqlite' => "COALESCE(user_type, '') || ':' || COALESCE(user_id, '')",
+            default => "CONCAT_WS(':', COALESCE(user_type, ''), COALESCE(user_id, ''))",
+        };
+
+        return "CASE WHEN user_id IS NULL OR user_id = '' THEN NULL ELSE {$concatExpression} END";
     }
 
     private function bucketFormat(string $bucket): string

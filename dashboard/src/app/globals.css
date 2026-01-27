@@ -908,6 +908,146 @@ h3 {
   background: rgba(255, 107, 45, 0.12);
 }
 
+.route-table__header--exceptions {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.route-table__heading {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.exceptions-toolbar {
+  margin-left: auto;
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.exceptions-search {
+  min-width: 220px;
+  max-width: 320px;
+  flex: 1 1 220px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.45rem 0.8rem;
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--ink);
+  font-size: 0.85rem;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.exceptions-search::placeholder {
+  color: var(--muted);
+}
+
+.exceptions-search:focus {
+  border-color: rgba(255, 107, 45, 0.6);
+  box-shadow: 0 0 0 3px rgba(255, 107, 45, 0.18);
+}
+
+:root[data-theme="dark"] .exceptions-search {
+  background: rgba(15, 23, 42, 0.55);
+}
+
+.exceptions-filters {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.exceptions-filter {
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  padding: 0.35rem 0.6rem;
+  font-size: 0.8rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.exceptions-filter:hover {
+  border-color: rgba(255, 107, 45, 0.45);
+  color: var(--ink);
+}
+
+.exceptions-filter--active {
+  border-color: rgba(255, 107, 45, 0.6);
+  background: rgba(255, 107, 45, 0.14);
+  color: var(--accent-strong);
+}
+
+.exceptions-filter__count {
+  font-variant-numeric: tabular-nums;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 107, 45, 0.35);
+  background: rgba(255, 107, 45, 0.16);
+  color: var(--accent-strong);
+  font-size: 0.75rem;
+}
+
+:root[data-theme="dark"] .exceptions-filter__count {
+  background: rgba(255, 107, 45, 0.2);
+}
+
+.exceptions-summary {
+  margin-top: 0.8rem;
+}
+
+.exceptions-summary__summary {
+  align-items: center;
+}
+
+.exceptions-status {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.exceptions-status__item {
+  min-width: 130px;
+  padding: 0.55rem 0.75rem;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.55);
+  display: grid;
+  gap: 0.2rem;
+}
+
+:root[data-theme="dark"] .exceptions-status__item {
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.exceptions-status__item--warn {
+  border-color: rgba(255, 107, 45, 0.5);
+  background: rgba(255, 107, 45, 0.16);
+}
+
+:root[data-theme="dark"] .exceptions-status__item--warn {
+  background: rgba(255, 107, 45, 0.22);
+}
+
+.exceptions-status__label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--muted);
+}
+
+.exceptions-status__value {
+  font-size: 1.25rem;
+  color: var(--card-ink);
+}
+
 .exception-cell {
   display: grid;
   gap: 0.3rem;
@@ -945,6 +1085,314 @@ h3 {
 
 :root[data-theme="dark"] .exception-row--active {
   background: rgba(255, 107, 45, 0.18);
+}
+
+.exception-detail-page {
+  margin-top: 1.2rem;
+  display: grid;
+  gap: 1.4rem;
+}
+
+.exception-hero {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.exception-hero__eyebrow {
+  margin: 0;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--muted);
+}
+
+.exception-hero__row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.2rem;
+}
+
+.exception-hero__main {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.exception-hero__title {
+  margin: 0;
+  font-size: clamp(1.85rem, 2.5vw, 2.35rem);
+  color: var(--card-ink);
+  word-break: break-word;
+}
+
+.exception-hero__message {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.98rem;
+  max-width: 92ch;
+  word-break: break-word;
+}
+
+.exception-hero__meta {
+  margin: 0.15rem 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.exception-hero__actions {
+  display: grid;
+  gap: 0.6rem;
+  justify-items: end;
+  flex: 0 0 auto;
+}
+
+.exception-hero__pill {
+  padding: 0.38rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 107, 45, 0.45);
+  background: rgba(255, 107, 45, 0.16);
+  color: var(--accent-strong);
+  font-weight: 600;
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.exception-top-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 1.4rem;
+  align-items: stretch;
+}
+
+.exception-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 1.2rem;
+  min-height: 320px;
+}
+
+.exception-summary__divider {
+  width: 1px;
+  background: var(--border);
+  border-radius: 999px;
+}
+
+.exception-summary__section {
+  display: grid;
+  gap: 0.6rem;
+  align-content: start;
+}
+
+.exception-summary__title {
+  margin: 0;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--muted);
+}
+
+.exception-summary__subtitle {
+  margin: -0.15rem 0 0.3rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.exception-summary__rows {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.exception-summary__row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.exception-summary__row span {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.exception-summary__row::after {
+  content: '';
+  flex: 1;
+  border-bottom: 1px dotted var(--border);
+  opacity: 0.8;
+}
+
+.exception-summary__row strong {
+  margin-left: auto;
+  color: var(--card-ink);
+  font-weight: 600;
+  padding-left: 0.6rem;
+  background: var(--card);
+  font-variant-numeric: tabular-nums;
+}
+
+.exception-trend {
+  display: grid;
+  gap: 1rem;
+  min-height: 320px;
+}
+
+.exception-trend__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.exception-trend__totals {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.exception-trend__count {
+  font-size: 1.85rem;
+  font-weight: 600;
+  color: var(--card-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.exception-trend__chart {
+  height: 280px;
+}
+
+.exception-bottom-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.4rem;
+  align-items: start;
+}
+
+.exception-group {
+  display: grid;
+  gap: 1rem;
+  min-height: 320px;
+}
+
+.exception-group__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.exception-group__chips {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.exception-group__chip {
+  padding: 0.28rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.55);
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.exception-group__chip--accent {
+  border-color: rgba(255, 107, 45, 0.55);
+  background: rgba(255, 107, 45, 0.18);
+  color: var(--accent-strong);
+}
+
+:root[data-theme="dark"] .exception-group__chip {
+  background: rgba(15, 23, 42, 0.55);
+}
+
+.exception-group__body {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.exception-group__row {
+  display: grid;
+  gap: 0.25rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.exception-group__row span {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.exception-group__row strong {
+  color: var(--card-ink);
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.exception-group__mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    monospace;
+  font-size: 0.82rem;
+}
+
+.exception-group__sql {
+  display: grid;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.exception-group__sql code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    monospace;
+  font-size: 0.8rem;
+  color: var(--card-ink);
+  background: rgba(15, 23, 42, 0.04);
+  border-radius: 14px;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--border);
+  overflow-wrap: anywhere;
+  max-height: 220px;
+  overflow: auto;
+}
+
+:root[data-theme="dark"] .exception-group__sql code {
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.exception-occurrences--nightwatch {
+  min-height: 360px;
+}
+
+.exception-occurrences--nightwatch .route-table__header {
+  border-bottom: 1px solid var(--border);
+}
+
+.exception-layout {
+  margin-top: 1.4rem;
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr);
+  gap: 1.4rem;
+  align-items: start;
+}
+
+.exception-layout__main,
+.exception-layout__side {
+  min-width: 0;
+}
+
+.exception-layout__side {
+  display: grid;
+  gap: 1.2rem;
 }
 
 .exception-detail {
@@ -1199,6 +1647,64 @@ h3 {
   .chart-card--wide {
     grid-column: span 2;
   }
+
+  .exception-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .exception-layout__side {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .exception-top-grid,
+  .exception-bottom-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .exception-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .exception-summary__divider {
+    display: none;
+  }
+
+  .exception-hero__row {
+    flex-direction: column;
+  }
+
+  .exception-hero__actions {
+    justify-items: start;
+  }
+
+  .exceptions-toolbar {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .exceptions-search {
+    flex: 1 1 100%;
+    max-width: none;
+    min-width: 0;
+  }
+
+  .exceptions-filters {
+    width: 100%;
+    overflow-x: auto;
+    padding-bottom: 0.2rem;
+  }
+
+  .exceptions-filter {
+    flex: 0 0 auto;
+  }
+
+  .exceptions-status {
+    width: 100%;
+  }
+
+  .exceptions-status__item {
+    flex: 1 1 160px;
+  }
 }
 
 @media (max-width: 720px) {
@@ -1230,5 +1736,9 @@ h3 {
 
   .card {
     padding: 1.2rem 1.3rem;
+  }
+
+  .exception-layout__side {
+    grid-template-columns: 1fr;
   }
 }

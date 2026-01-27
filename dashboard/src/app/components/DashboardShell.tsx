@@ -20,7 +20,7 @@ const navItems: Array<{
   tone?: 'warn';
   disabled?: boolean;
 }> = [
-  {label: 'Overview', href: '/overview'},
+  {label: 'Transactions', href: '/transactions'},
   {label: 'Retry traffic', href: '/retry-traffic'},
   {label: 'DB exceptions', href: '/db-exceptions'},
 ];

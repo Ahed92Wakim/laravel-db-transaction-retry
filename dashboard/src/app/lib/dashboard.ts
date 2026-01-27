@@ -8,7 +8,7 @@ export const timeRanges = [
   {label: '30D', value: '30d', windowLabel: 'Last 30 days'},
 ] as const;
 
-export const routeMetricsLimit = 8;
+export const routeMetricsLimit = 50;
 
 export type TimeRangeValue = (typeof timeRanges)[number]['value'];
 
