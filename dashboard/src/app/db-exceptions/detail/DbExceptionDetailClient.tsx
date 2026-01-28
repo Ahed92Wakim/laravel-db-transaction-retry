@@ -540,7 +540,7 @@ export default function DbExceptionDetailClient() {
                         <th>Occurred</th>
                         <th>User</th>
                         <th>SQL</th>
-                        <th>Message</th>
+                        {/*<th>Message</th>*/}
                       </tr>
                     </thead>
                     <tbody>
@@ -554,9 +554,9 @@ export default function DbExceptionDetailClient() {
                           <td className="exception-sql">
                             {row.raw_sql?.trim() || row.sql?.trim() || '--'}
                           </td>
-                          <td className="exception-message">
-                            {row.error_message?.trim() || '--'}
-                          </td>
+                          {/*<td className="exception-message">*/}
+                          {/*  {row.error_message?.trim() || '--'}*/}
+                          {/*</td>*/}
                         </tr>
                       ))}
                     </tbody>
