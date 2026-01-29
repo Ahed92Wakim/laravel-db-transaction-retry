@@ -45,11 +45,46 @@ abstract class TestCase extends BaseTestCase
 
 final class TestApplication extends Container
 {
+    protected string $basePath;
+
+    public function __construct()
+    {
+        $this->basePath = sys_get_temp_dir() . '/laravel-db-transaction-retry';
+    }
+
+    public function setBasePath(string $path): void
+    {
+        $this->basePath = rtrim($path, '/');
+    }
+
+    public function basePath($path = ''): string
+    {
+        return $path === '' ? $this->basePath : $this->basePath . '/' . ltrim((string) $path, '/');
+    }
+
+    public function path($path = ''): string
+    {
+        return $this->basePath('app' . ($path !== '' ? '/' . ltrim((string) $path, '/') : ''));
+    }
+
+    public function configPath($path = ''): string
+    {
+        return $this->basePath('config' . ($path !== '' ? '/' . ltrim((string) $path, '/') : ''));
+    }
+
+    public function databasePath($path = ''): string
+    {
+        return $this->basePath('database' . ($path !== '' ? '/' . ltrim((string) $path, '/') : ''));
+    }
+
+    public function publicPath($path = ''): string
+    {
+        return $this->basePath('public' . ($path !== '' ? '/' . ltrim((string) $path, '/') : ''));
+    }
+
     public function storagePath($path = ''): string
     {
-        $base = sys_get_temp_dir() . '/laravel-db-transaction-retry/storage';
-
-        return $path === '' ? $base : $base . '/' . ltrim((string) $path, '/');
+        return $this->basePath('storage' . ($path !== '' ? '/' . ltrim((string) $path, '/') : ''));
     }
 
     public function runningInConsole(): bool

@@ -7,6 +7,7 @@ use DatabaseTransactions\RetryHelper\Console\RollPartitionsCommand;
 use DatabaseTransactions\RetryHelper\Console\StartRetryCommand;
 use DatabaseTransactions\RetryHelper\Console\StopRetryCommand;
 use DatabaseTransactions\RetryHelper\Support\QueryExceptionLogger;
+use DatabaseTransactions\RetryHelper\Support\UninstallAction;
 use DatabaseTransactions\RetryHelper\Support\SlowTransactionMonitor;
 use Illuminate\Contracts\Container\BindingResolutionException;
 use Illuminate\Contracts\Debug\ExceptionHandler;
@@ -38,6 +39,7 @@ class DatabaseTransactionRetryServiceProvider extends ServiceProvider
         $this->registerQueryExceptionLogger();
 
         if ($this->app->runningInConsole()) {
+            $this->registerComposerEvents();
             $this->registerPublishing();
             $this->registerCommands();
         }
@@ -167,6 +169,17 @@ class DatabaseTransactionRetryServiceProvider extends ServiceProvider
             StartRetryCommand::class,
             StopRetryCommand::class,
         ]);
+    }
+
+    protected function registerComposerEvents(): void
+    {
+        if (! $this->app->bound('events')) {
+            return;
+        }
+
+        $this->app['events']->listen('composer_package.ahed92wakim/laravel-db-transaction-retry:pre_uninstall', function (): void {
+            $this->app->make(UninstallAction::class)->handle();
+        });
     }
 
 }
