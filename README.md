@@ -187,6 +187,21 @@ npm run build
 
 This writes static assets to `dashboard/out`, which are published to the host app's `public/transaction-retry` directory.
 
+## Uninstall
+
+When you remove the package with Composer, the service provider listens for the
+`composer_package.ahed92wakim/laravel-db-transaction-retry:pre_uninstall` event and
+cleans up published assets (similar to Telescope). It also removes the published
+dashboard service provider from `bootstrap/providers.php` when available. It deletes:
+
+- `config/database-transaction-retry.php`
+- `app/Providers/TransactionRetryDashboardServiceProvider.php`
+- Published migrations for the retry events and exception tables
+- The published dashboard assets under `public/{dashboard.path}`
+
+Database tables are not dropped automatically. If you want to remove them, drop the
+tables manually or run your own cleanup migration.
+
 ## Partition Maintenance (MySQL)
 
 The migration creates hourly partitions for MySQL. Keep partitions rolling by scheduling the command to run hourly:
