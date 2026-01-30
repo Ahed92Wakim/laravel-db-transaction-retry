@@ -1,6 +1,7 @@
 <?php
 
 use DatabaseTransactions\RetryHelper\Http\Controllers\TransactionRetryEventController;
+use DatabaseTransactions\RetryHelper\Support\DashboardAssets;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Route;
 
@@ -13,16 +14,39 @@ $apiMiddleware = Arr::wrap(config('database-transaction-retry.api.middleware', [
 $apiMiddleware = array_values(array_filter($apiMiddleware, static fn ($middleware) => $middleware !== null && $middleware !== ''));
 
 // Dashboard routes
-Route::prefix(trim((string) config('database-transaction-retry.dashboard.path', 'transaction-retry'), '/'))
+$dashboardPath = DashboardAssets::dashboardPath();
+
+Route::prefix($dashboardPath)
     ->middleware($dashboardMiddleware)
     ->group(function (): void {
-        Route::get('/{path?}', function () {
-            $path = trim((string) config('database-transaction-retry.dashboard.path', 'transaction-retry'), '/');
-            $path = $path === '' ? 'transaction-retry' : $path;
+        Route::get('/{path?}', function (?string $path = null) {
+            $path = $path === null ? '' : ltrim($path, '/');
 
-            $indexPath = function_exists('public_path')
-                ? public_path($path . '/index.html')
-                : app()->basePath('public/' . $path . '/index.html');
+            if ($path !== '' && ! str_contains($path, '..')) {
+                $assetPath   = DashboardAssets::assetPath($path);
+                $contentType = DashboardAssets::contentTypeFor($assetPath);
+                $headers     = $contentType !== null ? ['Content-Type' => $contentType] : [];
+
+                if (is_file($assetPath)) {
+                    return response()->file($assetPath, $headers);
+                }
+
+                if (is_dir($assetPath)) {
+                    $indexPath = rtrim($assetPath, '/') . '/index.html';
+
+                    if (is_file($indexPath)) {
+                        return response()->file($indexPath, ['Content-Type' => 'text/html; charset=UTF-8']);
+                    }
+                }
+
+                $htmlPath = $assetPath . '.html';
+
+                if (is_file($htmlPath)) {
+                    return response()->file($htmlPath, ['Content-Type' => 'text/html; charset=UTF-8']);
+                }
+            }
+
+            $indexPath = DashboardAssets::indexPath();
 
             if (! is_file($indexPath)) {
                 $html = '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Transaction Retry Dashboard</title></head>'

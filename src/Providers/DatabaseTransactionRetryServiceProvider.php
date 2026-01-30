@@ -6,6 +6,7 @@ use DatabaseTransactions\RetryHelper\Console\InstallCommand;
 use DatabaseTransactions\RetryHelper\Console\RollPartitionsCommand;
 use DatabaseTransactions\RetryHelper\Console\StartRetryCommand;
 use DatabaseTransactions\RetryHelper\Console\StopRetryCommand;
+use DatabaseTransactions\RetryHelper\Support\DashboardAssets;
 use DatabaseTransactions\RetryHelper\Support\QueryExceptionLogger;
 use DatabaseTransactions\RetryHelper\Support\UninstallAction;
 use DatabaseTransactions\RetryHelper\Support\SlowTransactionMonitor;
@@ -150,11 +151,7 @@ class DatabaseTransactionRetryServiceProvider extends ServiceProvider
             __DIR__ . '/../../stubs/TransactionRetryDashboardServiceProvider.stub' => $providerPath,
         ], 'database-transaction-retry-dashboard-provider');
 
-        $dashboardPath = trim((string) config('database-transaction-retry.dashboard.path', 'transaction-retry'), '/');
-        $dashboardPath = $dashboardPath === '' ? 'transaction-retry' : $dashboardPath;
-        $publicPath    = function_exists('public_path')
-            ? public_path($dashboardPath)
-            : $this->app->basePath('public/' . $dashboardPath);
+        $publicPath = DashboardAssets::publicPath();
 
         $this->publishes([
             __DIR__ . '/../../dashboard/out' => $publicPath,

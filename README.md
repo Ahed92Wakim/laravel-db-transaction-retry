@@ -115,7 +115,7 @@ If you switch to `logging.driver=log`, the migration is optional.
 
 ## Dashboard (Next.js UI)
 
-The package ships a static Next.js dashboard that is published into your Laravel app's `public/` folder. By default, it is available at:
+The package ships a static Next.js dashboard that is published into your Laravel app's `public/vendor/laravel-db-transaction-retry/{dashboard.path}` directory. By default, it is available at:
 
 - UI: `/transaction-retry`
 - API: `/api/transaction-retry/events`
@@ -185,7 +185,7 @@ npm install
 npm run build
 ```
 
-This writes static assets to `dashboard/out`, which are published to the host app's `public/transaction-retry` directory.
+This writes static assets to `dashboard/out`, which are published to the host app's `public/vendor/laravel-db-transaction-retry/{dashboard.path}` directory.
 
 ## Uninstall
 
@@ -197,7 +197,7 @@ dashboard service provider from `bootstrap/providers.php` when available. It del
 - `config/database-transaction-retry.php`
 - `app/Providers/TransactionRetryDashboardServiceProvider.php`
 - Published migrations for the retry events and exception tables
-- The published dashboard assets under `public/{dashboard.path}`
+- The published dashboard assets under `public/vendor/laravel-db-transaction-retry/{dashboard.path}`
 
 Database tables are not dropped automatically. If you want to remove them, drop the
 tables manually or run your own cleanup migration.
