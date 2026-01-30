@@ -2,8 +2,8 @@
 
 namespace DatabaseTransactions\RetryHelper\Support;
 
-use Illuminate\Support\ServiceProvider;
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\ServiceProvider;
 
 readonly class UninstallAction
 {

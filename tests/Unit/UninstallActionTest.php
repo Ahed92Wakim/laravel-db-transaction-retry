@@ -22,7 +22,9 @@ test('uninstall action removes published assets', function (): void {
     file_put_contents(database_path('migrations/2025_01_17_000000_create_transaction_retry_events_table.php'), 'migration');
     file_put_contents(database_path('migrations/2025_01_17_000001_create_db_transaction_logs_tables.php'), 'migration');
     file_put_contents(database_path('migrations/2025_01_17_000002_create_db_exceptions_table.php'), 'migration');
-    file_put_contents(base_path('bootstrap/providers.php'), <<<'PHP'
+    file_put_contents(
+        base_path('bootstrap/providers.php'),
+        <<<'PHP'
 <?php
 
 return [
