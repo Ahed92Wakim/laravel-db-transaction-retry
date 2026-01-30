@@ -8,3 +8,5 @@ The format is based on Keep a Changelog, and this project aims to follow Semanti
 
 ### Added
 - Added `CHANGELOG.md` to track notable changes over time.
+- Added pagination support (`page`/`per_page`) for the `metrics/routes-volume` endpoint (with total count metadata).
+- Added pagination support (`page`/`per_page`) for the `metrics/routes` endpoint (with total count metadata).

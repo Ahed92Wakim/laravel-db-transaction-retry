@@ -51,8 +51,6 @@ type ExceptionSummaryTotals = {
   unique: number;
   users: number;
   totalOccurrences: number;
-  handled: number;
-  unhandled: number;
   lastSeen: string | null;
 };
 
@@ -63,8 +61,6 @@ const emptySummaryTotals: ExceptionSummaryTotals = {
   unique: 0,
   users: 0,
   totalOccurrences: 0,
-  handled: 0,
-  unhandled: 0,
   lastSeen: null,
 };
 
@@ -171,7 +167,6 @@ export default function DbExceptionsClient() {
   const [summaryTotals, setSummaryTotals] = useState<ExceptionSummaryTotals>(emptySummaryTotals);
   const [exceptionPage, setExceptionPage] = useState<number>(1);
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'handled' | 'unhandled'>('all');
 
   const selectedRange =
     timeRanges.find((range) => range.value === timeRange) ?? timeRanges[1];
@@ -250,8 +245,6 @@ export default function DbExceptionsClient() {
             unique?: number | string;
             users?: number | string;
             total_occurrences?: number | string;
-            handled?: number | string;
-            unhandled?: number | string;
             last_seen?: string | null;
             series?: Array<{
               time: string;
@@ -290,8 +283,6 @@ export default function DbExceptionsClient() {
           totalOccurrences: toCount(
             payload?.meta?.total_occurrences ?? normalizedTotalOccurrences
           ),
-          handled: toCount(payload?.meta?.handled ?? 0),
-          unhandled: toCount(payload?.meta?.unhandled ?? normalizedTotalOccurrences),
           lastSeen: payload?.meta?.last_seen ?? null,
         });
         setExceptionPage(1);
@@ -310,10 +301,6 @@ export default function DbExceptionsClient() {
 
   const normalizedSearch = searchQuery.trim().toLowerCase();
   const filteredExceptions = useMemo(() => {
-    if (statusFilter === 'handled') {
-      return [] as ExceptionMetric[];
-    }
-
     if (normalizedSearch === '') {
       return exceptions;
     }
@@ -334,7 +321,7 @@ export default function DbExceptionsClient() {
 
       return haystack.includes(normalizedSearch);
     });
-  }, [exceptions, normalizedSearch, statusFilter]);
+  }, [exceptions, normalizedSearch]);
 
   const fallbackTotalOccurrences = exceptions.reduce(
     (sum, row) => sum + toCount(row.occurrences),
@@ -343,8 +330,6 @@ export default function DbExceptionsClient() {
   const summaryTotalOccurrences =
     summaryTotals.totalOccurrences > 0 ? summaryTotals.totalOccurrences : fallbackTotalOccurrences;
   const summaryUnique = summaryTotals.unique > 0 ? summaryTotals.unique : exceptions.length;
-  const summaryUnhandled =
-    summaryTotals.unhandled > 0 ? summaryTotals.unhandled : summaryTotalOccurrences;
   const summaryBucketResolved = summaryBucket ?? bucketForRange(timeRange);
   const summaryDisplaySeries = useMemo(
     () =>
@@ -391,12 +376,6 @@ export default function DbExceptionsClient() {
           ? 'No exceptions logged in this window.'
           : null;
   const summaryLastSeenLabel = formatLastSeen(summaryTotals.lastSeen, clientTimeZone);
-  const statusFilters = [
-    {key: 'all', label: 'View all', count: summaryTotalOccurrences},
-    {key: 'handled', label: 'Handled', count: summaryTotals.handled},
-    {key: 'unhandled', label: 'Unhandled', count: summaryUnhandled},
-  ] as const;
-
   useEffect(() => {
     setExceptionPage((prev) => Math.min(prev, exceptionTotalPages));
   }, [exceptionTotalPages]);
@@ -411,7 +390,7 @@ export default function DbExceptionsClient() {
           </div>
           <span className="card-chip">{rangeShortLabel}</span>
         </div>
-        <div className="chart-summary exceptions-summary__summary">
+          <div className="chart-summary exceptions-summary__summary">
           <div className="chart-summary__main">
             <span className="chart-summary__label">Occurrences</span>
             <span className="chart-summary__value">{formatValue(summaryTotalOccurrences)}</span>
@@ -419,20 +398,6 @@ export default function DbExceptionsClient() {
               {formatValue(summaryUnique)} unique · {formatValue(summaryTotals.users)} users · last
               seen {summaryLastSeenLabel}
             </span>
-          </div>
-          <div className="exceptions-status" role="group" aria-label="Handled status summary">
-            <div className="exceptions-status__item">
-              <span className="exceptions-status__label">Handled</span>
-              <strong className="exceptions-status__value">
-                {formatValue(summaryTotals.handled)}
-              </strong>
-            </div>
-            <div className="exceptions-status__item exceptions-status__item--warn">
-              <span className="exceptions-status__label">Unhandled</span>
-              <strong className="exceptions-status__value">
-                {formatValue(summaryUnhandled)}
-              </strong>
-            </div>
           </div>
         </div>
         <div className={`chart-frame${summaryMessage ? ' chart-frame--empty' : ''}`}>
@@ -481,24 +446,6 @@ export default function DbExceptionsClient() {
                 setExceptionPage(1);
               }}
             />
-            <div className="exceptions-filters" role="group" aria-label="Exception status filter">
-              {statusFilters.map((filter) => (
-                <button
-                  key={filter.key}
-                  type="button"
-                  className={`exceptions-filter${
-                    statusFilter === filter.key ? ' exceptions-filter--active' : ''
-                  }`}
-                  onClick={() => {
-                    setStatusFilter(filter.key);
-                    setExceptionPage(1);
-                  }}
-                >
-                  <span>{filter.label}</span>
-                  <span className="exceptions-filter__count">{formatValue(filter.count)}</span>
-                </button>
-              ))}
-            </div>
           </div>
         </div>
         {exceptionMessage ? (

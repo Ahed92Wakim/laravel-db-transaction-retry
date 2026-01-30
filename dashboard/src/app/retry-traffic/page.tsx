@@ -22,7 +22,6 @@ import {
   methodClassName,
   resolveBucket,
   resolveTimeWindow,
-  routeMetricsLimit,
   timeRanges,
   toCount,
   type Bucket,
@@ -59,6 +58,8 @@ export default function RetryTrafficPage() {
     'idle'
   );
   const [routeMetricsPage, setRouteMetricsPage] = useState<number>(1);
+  const [routeMetricsTotal, setRouteMetricsTotal] = useState<number>(0);
+  const [routeMetricsPerPage, setRouteMetricsPerPage] = useState<number>(routeMetricsPageSize);
 
   const selectedRange =
     timeRanges.find((range) => range.value === timeRange) ?? timeRanges[1];
@@ -193,8 +194,12 @@ export default function RetryTrafficPage() {
 
     const load = async () => {
       try {
+        const params = new URLSearchParams(rangeQuery);
+        params.set('page', String(routeMetricsPage));
+        params.set('per_page', String(routeMetricsPageSize));
+
         const response = await fetch(
-          `${apiBase}/metrics/routes?${rangeQuery}&limit=${routeMetricsLimit}`,
+          `${apiBase}/metrics/routes?${params.toString()}`,
           {
             signal: controller.signal,
             headers: {Accept: 'application/json'},
@@ -217,6 +222,11 @@ export default function RetryTrafficPage() {
             failure?: number | string;
             last_seen?: string | null;
           }>;
+          meta?: {
+            page?: number | string;
+            per_page?: number | string;
+            total?: number | string;
+          };
         };
         const rows = Array.isArray(payload?.data) ? payload.data : [];
         const normalized = rows.map((row) => ({
@@ -227,6 +237,14 @@ export default function RetryTrafficPage() {
         }));
 
         setRouteMetrics(normalized);
+        const total = Number(payload?.meta?.total ?? 0);
+        const perPage = Number(payload?.meta?.per_page ?? routeMetricsPageSize);
+        const page = Number(payload?.meta?.page ?? routeMetricsPage);
+        setRouteMetricsTotal(Number.isFinite(total) ? total : 0);
+        setRouteMetricsPerPage(Number.isFinite(perPage) ? perPage : routeMetricsPageSize);
+        if (Number.isFinite(page) && page !== routeMetricsPage) {
+          setRouteMetricsPage(page);
+        }
         setRouteMetricsStatus('idle');
       } catch (error) {
         if ((error as Error).name !== 'AbortError') {
@@ -238,7 +256,7 @@ export default function RetryTrafficPage() {
     load();
 
     return () => controller.abort();
-  }, [rangeQuery]);
+  }, [rangeQuery, routeMetricsPage]);
 
   const kpis = [
     {
@@ -287,27 +305,21 @@ export default function RetryTrafficPage() {
       ? 'Loading routes...'
       : routeMetricsStatus === 'error'
         ? 'Unable to load routes.'
-        : routeMetrics.length === 0
+        : routeMetrics.length === 0 && routeMetricsTotal === 0
           ? 'No route retries in this window.'
+          : routeMetrics.length === 0
+            ? 'No routes on this page.'
           : null;
   const routeMetricsTotalPages = Math.max(
     1,
-    Math.ceil(routeMetrics.length / routeMetricsPageSize)
+    Math.ceil(routeMetricsTotal / Math.max(routeMetricsPerPage, 1))
   );
   const currentRouteMetricsPage = Math.min(routeMetricsPage, routeMetricsTotalPages);
-  const routeMetricsStartIndex = (currentRouteMetricsPage - 1) * routeMetricsPageSize;
-  const routeMetricsPageRows = routeMetrics.slice(
-    routeMetricsStartIndex,
-    routeMetricsStartIndex + routeMetricsPageSize
-  );
+  const routeMetricsPageRows = routeMetrics;
 
   useEffect(() => {
     setRouteMetricsPage(1);
-  }, [timeRange, routeMetrics.length]);
-
-  useEffect(() => {
-    setRouteMetricsPage((prev) => Math.min(prev, routeMetricsTotalPages));
-  }, [routeMetricsTotalPages]);
+  }, [timeRange]);
 
   return (
     <DashboardShell
@@ -400,7 +412,7 @@ export default function RetryTrafficPage() {
         <div className="route-table__header">
           <p className="route-table__title">Routes with retries</p>
           <span className="route-table__meta">
-            {rangeShortLabel} window · {formatValue(routeMetrics.length)} routes · page{' '}
+            {rangeShortLabel} window · {formatValue(routeMetricsTotal)} routes · page{' '}
             {currentRouteMetricsPage} of {routeMetricsTotalPages}
           </span>
         </div>
@@ -442,7 +454,7 @@ export default function RetryTrafficPage() {
             </div>
             <div className="table-footer">
               <span className="table-footer__meta">
-                Showing {routeMetricsPageRows.length} of {formatValue(routeMetrics.length)}
+                Showing {routeMetricsPageRows.length} of {formatValue(routeMetricsTotal)}
               </span>
               <div className="table-footer__actions">
                 <button

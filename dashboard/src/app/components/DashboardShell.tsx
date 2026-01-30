@@ -69,7 +69,7 @@ export default function DashboardShell({
       retryFailureCount == null ? undefined : retryFailureCount > 0 ? 'warn' : 'ok';
 
     return [
-      {label: 'Issues (unique)', value: issuesValue, tone: issuesTone},
+      {label: 'DB Exceptions', value: issuesValue, tone: issuesTone},
       {label: 'Retry failures', value: retryFailuresValue, tone: retryFailuresTone},
       {label: 'Retry attempts', value: retryAttemptsValue},
     ];

@@ -187,13 +187,18 @@ class TransactionRetryEventController
     {
         $table                  = (string)config('database-transaction-retry.logging.table', 'transaction_retry_events');
         [$start, $end, $window] = $this->resolveRange($request, '24h');
-        $limit                  = min(max((int)$request->query('limit', 10), 1), 50);
+        $perPageInput           = $request->query('per_page');
+        if ($perPageInput === null) {
+            $perPageInput = $request->query('limit', 10);
+        }
+        $perPage = max((int)$perPageInput, 1);
+        $page    = max((int)$request->query('page', 1), 1);
 
         $attemptStatus = RetryStatus::Attempt->value;
         $successStatus = RetryStatus::Success->value;
         $failureStatus = RetryStatus::Failure->value;
 
-        $rows = DB::table($table)
+        $paginator = DB::table($table)
 //            ->select(['route_hash', 'method', 'route_name', 'url'])
             ->selectRaw('ANY_VALUE(route_hash) as route_hash')
             ->selectRaw('ANY_VALUE(method) as method')
@@ -219,16 +224,17 @@ class TransactionRetryEventController
             ->groupBy('retry_group_id')
             ->orderByDesc('attempts')
             ->orderByDesc('failure')
-            ->limit($limit)
-            ->get();
+            ->paginate($perPage, ['*'], 'page', $page);
 
         return response()->json([
-            'data' => $rows,
+            'data' => $paginator->items(),
             'meta' => [
-                'from'   => $start->toIso8601String(),
-                'to'     => $end->toIso8601String(),
-                'window' => $window,
-                'limit'  => $limit,
+                'from'     => $start->toIso8601String(),
+                'to'       => $end->toIso8601String(),
+                'window'   => $window,
+                'page'     => $paginator->currentPage(),
+                'per_page' => $paginator->perPage(),
+                'total'    => $paginator->total(),
             ],
         ]);
     }
@@ -238,7 +244,13 @@ class TransactionRetryEventController
         $logTable               = (string)config('database-transaction-retry.slow_transactions.log_table', 'db_transaction_logs');
         $connection             = $this->resolveSlowTransactionConnection();
         [$start, $end, $window] = $this->resolveRange($request, '24h');
-        $limit                  = min(max((int)$request->query('limit', 10), 1), 50);
+        $perPageInput           = $request->query('per_page');
+        if ($perPageInput === null) {
+            $perPageInput = $request->query('limit', 10);
+        }
+        //        $perPage = min(max((int)$perPageInput, 1), 50);
+        $perPage = $perPageInput;
+        $page    = max((int)$request->query('page', 1), 1);
 
         $baseQuery = $connection->table($logTable)
             ->whereNotNull('completed_at')
@@ -248,7 +260,7 @@ class TransactionRetryEventController
                 $query->whereNotNull('route_name')->orWhereNotNull('url');
             });
 
-        $rows = (clone $baseQuery)
+        $paginator = (clone $baseQuery)
             ->selectRaw('ANY_VALUE(http_method) as method')
             ->selectRaw('ANY_VALUE(route_name) as route_name')
             ->selectRaw('ANY_VALUE(url) as url')
@@ -259,10 +271,9 @@ class TransactionRetryEventController
             ->selectRaw('SUM(CASE WHEN http_status >= 500 THEN 1 ELSE 0 END) as status_5xx')
             ->groupBy('http_method', 'route_name', 'url')
             ->orderByDesc('total')
-            ->limit($limit)
-            ->get();
+            ->paginate($perPage, ['*'], 'page', $page);
 
-        $rows = $rows->map(function ($row) use ($baseQuery) {
+        $rows = $paginator->getCollection()->map(function ($row) use ($baseQuery) {
             $count  = (int) ($row->total ?? 0);
             $offset = max((int) ceil($count * 0.95) - 1, 0);
 
@@ -296,14 +307,17 @@ class TransactionRetryEventController
 
             return $row;
         });
+        $paginator->setCollection($rows);
 
         return response()->json([
-            'data' => $rows,
+            'data' => $paginator->items(),
             'meta' => [
-                'from'   => $start->toIso8601String(),
-                'to'     => $end->toIso8601String(),
-                'window' => $window,
-                'limit'  => $limit,
+                'from'     => $start->toIso8601String(),
+                'to'       => $end->toIso8601String(),
+                'window'   => $window,
+                'page'     => $paginator->currentPage(),
+                'per_page' => $paginator->perPage(),
+                'total'    => $paginator->total(),
             ],
         ]);
     }
