@@ -18,6 +18,7 @@ This repo is a Laravel package that adds a retry wrapper around database transac
 - Target PHP 8.2+ and Laravel 11/12.
 - Prefer adding tests under `tests/` for new behavior.
 - Keep public API changes documented in `README.md` when relevant.
+- Track notable changes in `CHANGELOG.md` under the `[Unreleased]` section.
 
 ## Notes
 - Retry behavior is driven by `config/database-transaction-retry.php` (published in host apps).

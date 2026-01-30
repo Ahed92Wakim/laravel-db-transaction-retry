@@ -284,6 +284,10 @@ Tests cover the retry flow, logging behaviour, exponential backoff jitter, and n
 - PHP `>= 8.2`
 - Laravel `>= 11.0`
 
+## Changelog
+
+Notable changes are tracked in `CHANGELOG.md`.
+
 ## Contributing
 
 Bugs, ideas, and pull requests are welcome. Feel free to open an issue describing the problem or improvement before submitting a PR so we can collaborate on scope.
