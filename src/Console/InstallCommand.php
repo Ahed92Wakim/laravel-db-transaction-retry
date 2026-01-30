@@ -14,7 +14,7 @@ class InstallCommand extends Command
     {
         $force = (bool) $this->option('force');
 
-        $this->info('Installing YourPackage...');
+        $this->info('Installing database transaction retry assets...');
         $this->newLine();
 
         $this->info('Publishing configuration...');

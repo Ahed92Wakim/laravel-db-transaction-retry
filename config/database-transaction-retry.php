@@ -15,6 +15,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Toggle State Path
+    |--------------------------------------------------------------------------
+    |
+    | The retry toggle uses a marker file to persist the enabled/disabled state
+    | across processes. Configure where that marker is stored to ensure it is
+    | writable in production deployments.
+    |
+    */
+
+    'state_path' => env('DB_TRANSACTION_RETRY_STATE_PATH', storage_path('database-transaction-retry/runtime')),
+
+    /*
+    |--------------------------------------------------------------------------
     | Retry Defaults
     |--------------------------------------------------------------------------
     |

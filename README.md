@@ -82,6 +82,7 @@ You can also run `php artisan db-transaction-retry:install` to publish the confi
 - Key options (`config/database-transaction-retry.php`):
 
 - `max_retries`, `retry_delay`, and `log_file_name` set the package-wide defaults when you omit parameters. Each respects environment variables (`DB_TRANSACTION_RETRY_MAX_RETRIES`, `DB_TRANSACTION_RETRY_DELAY`, `DB_TRANSACTION_RETRY_LOG_FILE`). `log_file_name` only applies when `logging.driver=log`.
+- `state_path` controls where the retry toggle marker file is stored (defaults to `storage_path('database-transaction-retry/runtime')`). Set `DB_TRANSACTION_RETRY_STATE_PATH` if your deployment requires a custom writable location.
 - `lock_wait_timeout_seconds` lets you override `innodb_lock_wait_timeout` per attempt; set the matching environment variable (`DB_TRANSACTION_RETRY_LOCK_WAIT_TIMEOUT`) to control the session value or leave null to use the database default.
 - `logging.driver` selects where retry events are stored: `database` (default) or `log`.
 - `logging.table` lets you override the database table name (defaults to `transaction_retry_events`).

@@ -81,6 +81,22 @@ class RetryToggle
 
     protected static function stateDirectory(): string
     {
+        if (function_exists('config')) {
+            $configured = config('database-transaction-retry.state_path');
+
+            if (is_string($configured)) {
+                $configured = trim($configured);
+
+                if ($configured !== '') {
+                    return rtrim($configured, '/');
+                }
+            }
+        }
+
+        if (function_exists('storage_path')) {
+            return rtrim(storage_path('database-transaction-retry/runtime'), '/');
+        }
+
         return dirname(__DIR__, 2) . '/storage/runtime';
     }
 
