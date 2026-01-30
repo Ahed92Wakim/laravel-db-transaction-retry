@@ -84,11 +84,6 @@ readonly class UninstallAction
             return null;
         }
 
-        $dashboardPath = trim((string) config('database-transaction-retry.dashboard.path', 'transaction-retry'), '/');
-        $dashboardPath = $dashboardPath === '' ? 'transaction-retry' : $dashboardPath;
-
-        return function_exists('public_path')
-            ? public_path($dashboardPath)
-            : base_path('public/' . $dashboardPath);
+        return DashboardAssets::publicPath();
     }
 }

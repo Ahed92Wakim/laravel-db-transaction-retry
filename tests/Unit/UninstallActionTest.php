@@ -1,5 +1,6 @@
 <?php
 
+use DatabaseTransactions\RetryHelper\Support\DashboardAssets;
 use DatabaseTransactions\RetryHelper\Support\UninstallAction;
 use Illuminate\Filesystem\Filesystem;
 
@@ -14,7 +15,7 @@ test('uninstall action removes published assets', function (): void {
     $files->ensureDirectoryExists(app_path('Providers'));
     $files->ensureDirectoryExists(database_path('migrations'));
     $files->ensureDirectoryExists(base_path('bootstrap'));
-    $files->ensureDirectoryExists(public_path('transaction-retry'));
+    $files->ensureDirectoryExists(DashboardAssets::publicPath());
 
     file_put_contents(config_path('database-transaction-retry.php'), 'config');
     file_put_contents(app_path('Providers/TransactionRetryDashboardServiceProvider.php'), 'provider');
@@ -30,7 +31,7 @@ return [
 ];
 PHP
     );
-    file_put_contents(public_path('transaction-retry/index.html'), '<html></html>');
+    file_put_contents(DashboardAssets::indexPath(), '<html></html>');
 
     (new UninstallAction($files))->handle();
 
@@ -39,6 +40,6 @@ PHP
     expect(file_exists(database_path('migrations/2025_01_17_000000_create_transaction_retry_events_table.php')))->toBeFalse();
     expect(file_exists(database_path('migrations/2025_01_17_000001_create_db_transaction_logs_tables.php')))->toBeFalse();
     expect(file_exists(database_path('migrations/2025_01_17_000002_create_db_exceptions_table.php')))->toBeFalse();
-    expect(is_dir(public_path('transaction-retry')))->toBeFalse();
+    expect(is_dir(DashboardAssets::publicPath()))->toBeFalse();
     expect(file_get_contents(base_path('bootstrap/providers.php')))->not->toContain('TransactionRetryDashboardServiceProvider');
 });

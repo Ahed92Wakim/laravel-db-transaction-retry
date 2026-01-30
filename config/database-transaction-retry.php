@@ -101,7 +101,7 @@ return [
     |--------------------------------------------------------------------------
     |
     | Configure the embedded dashboard UI and API endpoints. The UI is served
-    | from the published static assets under the configured path.
+    | from the published static assets under public/vendor/laravel-db-transaction-retry/{dashboard.path}.
     |
     */
 
@@ -120,8 +120,8 @@ return [
     ],
 
     'api' => [
-        'enabled'    => env('DB_TRANSACTION_RETRY_API_ENABLED', true),
-        'prefix'     => env('DB_TRANSACTION_RETRY_API_PREFIX', 'api/transaction-retry'),
+        'enabled' => env('DB_TRANSACTION_RETRY_API_ENABLED', true),
+        'prefix'  => env('DB_TRANSACTION_RETRY_API_PREFIX', 'api/transaction-retry'),
 
         /*
         | Middleware to apply to the dashboard JSON API routes. For web-session
