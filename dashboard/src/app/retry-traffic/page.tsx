@@ -300,15 +300,19 @@ export default function RetryTrafficPage() {
       })),
     [clientTimeZone, retryTraffic, retryTrafficBucket]
   );
+  const isRouteMetricsLoading = routeMetricsStatus === 'loading';
+  const hasRouteMetricsRows = routeMetrics.length > 0;
   const routeMetricsMessage =
-    routeMetricsStatus === 'loading'
-      ? 'Loading routes...'
-      : routeMetricsStatus === 'error'
-        ? 'Unable to load routes.'
-        : routeMetrics.length === 0 && routeMetricsTotal === 0
-          ? 'No route retries in this window.'
-          : routeMetrics.length === 0
-            ? 'No routes on this page.'
+    !hasRouteMetricsRows && routeMetricsStatus === 'error'
+      ? 'Unable to load routes.'
+      : !hasRouteMetricsRows && routeMetricsTotal === 0
+        ? isRouteMetricsLoading
+          ? 'Loading routes...'
+          : 'No route retries in this window.'
+        : !hasRouteMetricsRows
+          ? isRouteMetricsLoading
+            ? 'Loading routes...'
+            : 'No routes on this page.'
           : null;
   const routeMetricsTotalPages = Math.max(
     1,
@@ -461,7 +465,7 @@ export default function RetryTrafficPage() {
                   type="button"
                   className="pagination-button"
                   onClick={() => setRouteMetricsPage((prev) => Math.max(1, prev - 1))}
-                  disabled={currentRouteMetricsPage <= 1}
+                  disabled={isRouteMetricsLoading || currentRouteMetricsPage <= 1}
                 >
                   Previous
                 </button>
@@ -471,7 +475,7 @@ export default function RetryTrafficPage() {
                   onClick={() =>
                     setRouteMetricsPage((prev) => Math.min(routeMetricsTotalPages, prev + 1))
                   }
-                  disabled={currentRouteMetricsPage >= routeMetricsTotalPages}
+                  disabled={isRouteMetricsLoading || currentRouteMetricsPage >= routeMetricsTotalPages}
                 >
                   Next
                 </button>

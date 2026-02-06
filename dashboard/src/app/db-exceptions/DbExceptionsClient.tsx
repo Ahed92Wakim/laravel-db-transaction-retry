@@ -1,6 +1,6 @@
 'use client';
 
-import {useEffect, useMemo, useState} from 'react';
+import {useEffect, useMemo, useRef, useState} from 'react';
 import {
   CartesianGrid,
   Line,
@@ -54,7 +54,6 @@ type ExceptionSummaryTotals = {
   lastSeen: string | null;
 };
 
-const exceptionRowLimit = 50;
 const exceptionPageSize = 10;
 
 const emptySummaryTotals: ExceptionSummaryTotals = {
@@ -166,7 +165,9 @@ export default function DbExceptionsClient() {
   const [summaryBucket, setSummaryBucket] = useState<Bucket | null>(null);
   const [summaryTotals, setSummaryTotals] = useState<ExceptionSummaryTotals>(emptySummaryTotals);
   const [exceptionPage, setExceptionPage] = useState<number>(1);
+  const [exceptionTotal, setExceptionTotal] = useState<number>(0);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const previousRangeQuery = useRef<string | null>(null);
 
   const selectedRange =
     timeRanges.find((range) => range.value === timeRange) ?? timeRanges[1];
@@ -205,6 +206,15 @@ export default function DbExceptionsClient() {
 
   useEffect(() => {
     const controller = new AbortController();
+
+    if (previousRangeQuery.current !== rangeQuery) {
+      previousRangeQuery.current = rangeQuery;
+      if (exceptionPage !== 1) {
+        setExceptionPage(1);
+        return () => controller.abort();
+      }
+    }
+
     setExceptionsStatus('loading');
     setSummarySeries([]);
     setSummaryBucket(null);
@@ -213,7 +223,7 @@ export default function DbExceptionsClient() {
     const load = async () => {
       try {
         const response = await fetch(
-          `${apiBase}/metrics/exceptions?${rangeQuery}&limit=${exceptionRowLimit}`,
+          `${apiBase}/metrics/exceptions?${rangeQuery}&per_page=${exceptionPageSize}&page=${exceptionPage}`,
           {
             signal: controller.signal,
             headers: {Accept: 'application/json'},
@@ -246,6 +256,9 @@ export default function DbExceptionsClient() {
             users?: number | string;
             total_occurrences?: number | string;
             last_seen?: string | null;
+            page?: number | string;
+            per_page?: number | string;
+            total?: number | string;
             series?: Array<{
               time: string;
               timestamp?: string;
@@ -285,7 +298,7 @@ export default function DbExceptionsClient() {
           ),
           lastSeen: payload?.meta?.last_seen ?? null,
         });
-        setExceptionPage(1);
+        setExceptionTotal(toCount(payload?.meta?.total ?? normalized.length));
         setExceptionsStatus('idle');
       } catch (error) {
         if ((error as Error).name !== 'AbortError') {
@@ -297,7 +310,7 @@ export default function DbExceptionsClient() {
     load();
 
     return () => controller.abort();
-  }, [rangeQuery]);
+  }, [exceptionPage, rangeQuery]);
 
   const normalizedSearch = searchQuery.trim().toLowerCase();
   const filteredExceptions = useMemo(() => {
@@ -349,13 +362,9 @@ export default function DbExceptionsClient() {
     (sum, row) => sum + row.occurrences,
     0
   );
-  const exceptionTotalPages = Math.max(1, Math.ceil(filteredExceptions.length / exceptionPageSize));
+  const exceptionTotalPages = Math.max(1, Math.ceil(exceptionTotal / exceptionPageSize));
   const currentExceptionPage = Math.min(exceptionPage, exceptionTotalPages);
-  const exceptionStartIndex = (currentExceptionPage - 1) * exceptionPageSize;
-  const exceptionsPageRows = filteredExceptions.slice(
-    exceptionStartIndex,
-    exceptionStartIndex + exceptionPageSize
-  );
+  const exceptionsPageRows = filteredExceptions;
   const noExceptionsInWindow = exceptions.length === 0 && summaryTotalOccurrences === 0;
   const exceptionMessage =
     exceptionsStatus === 'loading'
@@ -468,11 +477,10 @@ export default function DbExceptionsClient() {
                     const title = formatExceptionTitle(row.exception_class);
                     const meta = row.exception_class?.trim();
                     const message = row.error_message?.trim();
-                    const globalIndex = exceptionStartIndex + index;
 
                     return (
                       <tr
-                        key={row.event_hash ?? `${title}-${globalIndex}`}
+                        key={row.event_hash ?? `${title}-${index}`}
                         className="exception-row"
                         onClick={() => {
                           if (row.event_hash) {
@@ -508,7 +516,7 @@ export default function DbExceptionsClient() {
             </div>
             <div className="table-footer">
               <span className="table-footer__meta">
-                Showing {exceptionsPageRows.length} of {formatValue(filteredExceptions.length)}
+                Showing {exceptionsPageRows.length} of {formatValue(exceptionTotal)}
               </span>
               <div className="table-footer__actions">
                 <button

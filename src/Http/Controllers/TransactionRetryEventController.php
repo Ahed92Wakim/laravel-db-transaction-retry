@@ -327,13 +327,18 @@ class TransactionRetryEventController
         $table                  = (string)config('database-transaction-retry.exception_logging.table', 'db_exceptions');
         $connection             = $this->resolveExceptionLoggingConnection();
         [$start, $end, $window] = $this->resolveRange($request, '24h');
-        $limit                  = min(max((int)$request->query('limit', 50), 1), 200);
-        $driver                 = $connection->getDriverName();
-        $bucket                 = $this->bucketForWindow($window, $start, $end);
-        $bucketExpression       = $this->bucketExpression($bucket, $driver);
-        $bucketFormat           = $this->bucketFormat($bucket);
-        $labelFormat            = $this->labelFormat($bucket);
-        $userKeyExpression      = $this->userKeyExpression($driver);
+        $perPageInput           = $request->query('per_page');
+        if ($perPageInput === null) {
+            $perPageInput = $request->query('limit', 10);
+        }
+        $perPage           = max((int)$perPageInput, 1);
+        $page              = max((int)$request->query('page', 1), 1);
+        $driver            = $connection->getDriverName();
+        $bucket            = $this->bucketForWindow($window, $start, $end);
+        $bucketExpression  = $this->bucketExpression($bucket, $driver);
+        $bucketFormat      = $this->bucketFormat($bucket);
+        $labelFormat       = $this->labelFormat($bucket);
+        $userKeyExpression = $this->userKeyExpression($driver);
 
         if ($table === '') {
             return response()->json([
@@ -343,7 +348,10 @@ class TransactionRetryEventController
                     'to'                => $end->toIso8601String(),
                     'window'            => $window,
                     'bucket'            => $bucket,
-                    'limit'             => $limit,
+                    'page'              => $page,
+                    'per_page'          => $perPage,
+                    'total'             => 0,
+                    'limit'             => $perPage,
                     'unique'            => 0,
                     'users'             => 0,
                     'total_occurrences' => 0,
@@ -374,7 +382,7 @@ class TransactionRetryEventController
             ->selectRaw('MAX(occurred_at) as last_seen')
             ->first();
 
-        $rows = (clone $baseQuery)
+        $paginator = (clone $baseQuery)
             ->selectRaw('ANY_VALUE(exception_class) as exception_class')
             ->selectRaw('ANY_VALUE(error_message) as error_message')
             ->selectRaw('ANY_VALUE(sql_state) as sql_state')
@@ -390,8 +398,9 @@ class TransactionRetryEventController
             ->groupBy('event_hash')
             ->orderByDesc('occurrences')
             ->orderByDesc('last_seen')
-            ->limit($limit)
-            ->get();
+            ->paginate($perPage, ['*'], 'page', $page);
+
+        $rows = $paginator->items();
 
         $seriesRows = (clone $baseQuery)
             ->selectRaw("{$bucketExpression} as bucket")
@@ -431,7 +440,10 @@ class TransactionRetryEventController
                 'to'                => $end->toIso8601String(),
                 'window'            => $window,
                 'bucket'            => $bucket,
-                'limit'             => $limit,
+                'page'              => $paginator->currentPage(),
+                'per_page'          => $paginator->perPage(),
+                'total'             => $paginator->total(),
+                'limit'             => $paginator->perPage(),
                 'unique'            => $uniqueCount,
                 'users'             => is_numeric($uniqueUsers) ? (int)$uniqueUsers : 0,
                 'total_occurrences' => $totalOccurrences,
@@ -448,8 +460,12 @@ class TransactionRetryEventController
         $table                  = (string)config('database-transaction-retry.exception_logging.table', 'db_exceptions');
         $connection             = $this->resolveExceptionLoggingConnection();
         [$start, $end, $window] = $this->resolveRange($request, '24h');
-        $perPage                = min(max((int)$request->query('per_page', 20), 1), 200);
-        $page                   = max((int)$request->query('page', 1), 1);
+        $perPageInput           = $request->query('per_page');
+        if ($perPageInput === null) {
+            $perPageInput = $request->query('limit', 10);
+        }
+        $perPage = max((int)$perPageInput, 1);
+        $page    = max((int)$request->query('page', 1), 1);
 
         $bucket           = $this->bucketForWindow($window, $start, $end);
         $driver           = $connection->getDriverName();

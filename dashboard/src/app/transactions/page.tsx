@@ -244,16 +244,20 @@ export default function TransactionsPage() {
                 : queryMetrics.length === 0
                     ? 'No query records in this window.'
                     : null;
+    const isRouteVolumeLoading = routeVolumeStatus === 'loading';
+    const hasRouteVolumeRows = routeVolumeMetrics.length > 0;
     const routeVolumeMessage =
-        routeVolumeStatus === 'loading'
-            ? 'Loading routes...'
-            : routeVolumeStatus === 'error'
-                ? 'Unable to load routes.'
-                : routeVolumeMetrics.length === 0 && routeVolumeTotal === 0
-                    ? 'No routes recorded in this window.'
-                    : routeVolumeMetrics.length === 0
-                        ? 'No routes on this page.'
-                        : null;
+        !hasRouteVolumeRows && routeVolumeStatus === 'error'
+            ? 'Unable to load routes.'
+            : !hasRouteVolumeRows && routeVolumeTotal === 0
+                ? isRouteVolumeLoading
+                    ? 'Loading routes...'
+                    : 'No routes recorded in this window.'
+                : !hasRouteVolumeRows
+                    ? isRouteVolumeLoading
+                        ? 'Loading routes...'
+                        : 'No routes on this page.'
+                    : null;
     const routeVolumeTotalPages = Math.max(
         1,
         Math.ceil(routeVolumeTotal / Math.max(routeVolumePerPage, 1))
@@ -338,10 +342,6 @@ export default function TransactionsPage() {
                 queryDurationSummary.maxP95
             )}`
             : '--';
-
-    useEffect(() => {
-        setRouteVolumePage(1);
-    }, [timeRange, routeVolumeMetrics.length]);
 
     useEffect(() => {
         setRouteVolumePage((prev) => Math.min(prev, routeVolumeTotalPages));
@@ -558,7 +558,7 @@ export default function TransactionsPage() {
                                     type="button"
                                     className="pagination-button"
                                     onClick={() => setRouteVolumePage((prev) => Math.max(1, prev - 1))}
-                                    disabled={currentRouteVolumePage <= 1}
+                                    disabled={isRouteVolumeLoading || currentRouteVolumePage <= 1}
                                 >
                                     Previous
                                 </button>
@@ -568,7 +568,7 @@ export default function TransactionsPage() {
                                     onClick={() =>
                                         setRouteVolumePage((prev) => Math.min(routeVolumeTotalPages, prev + 1))
                                     }
-                                    disabled={currentRouteVolumePage >= routeVolumeTotalPages}
+                                    disabled={isRouteVolumeLoading || currentRouteVolumePage >= routeVolumeTotalPages}
                                 >
                                     Next
                                 </button>

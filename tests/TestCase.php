@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Tests;
 
+use Illuminate\Auth\Access\Gate;
 use Illuminate\Config\Repository;
 use Illuminate\Container\Container;
+use Illuminate\Contracts\Auth\Access\Gate as GateContract;
 use Illuminate\Support\Facades\Facade;
 use PHPUnit\Framework\TestCase as BaseTestCase;
 
@@ -31,6 +33,12 @@ abstract class TestCase extends BaseTestCase
 
         $this->app->instance('config', $configRepository);
         $this->app->instance('path.storage', $this->app->storagePath());
+
+        $this->app->singleton(GateContract::class, function ($app) {
+            return new Gate($app, function (): void {
+                return;
+            });
+        });
     }
 
     protected function tearDown(): void
@@ -46,6 +54,7 @@ abstract class TestCase extends BaseTestCase
 final class TestApplication extends Container
 {
     protected string $basePath;
+    protected string $environment = 'testing';
 
     public function __construct()
     {
@@ -100,5 +109,27 @@ final class TestApplication extends Container
     public function runningUnitTests(): bool
     {
         return true;
+    }
+
+    public function environment(...$environments)
+    {
+        if (count($environments) > 0) {
+            $patterns = is_array($environments[0]) ? $environments[0] : $environments;
+
+            foreach ($patterns as $pattern) {
+                if ($pattern === $this->environment) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        return $this->environment;
+    }
+
+    public function detectEnvironment(\Closure $callback): void
+    {
+        $this->environment = $callback();
     }
 }

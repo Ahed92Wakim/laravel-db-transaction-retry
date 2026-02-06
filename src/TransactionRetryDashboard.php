@@ -20,15 +20,27 @@ class TransactionRetryDashboard
 
     public static function check(Request $request): bool
     {
-        $callback = static::$authUsing ?? static function (Request $request): bool {
-            return app()->environment('local');
-        };
-
-        return (bool) $callback($request);
+        return (static::$authUsing ?: function (Request $request) {
+            return app()->environment('local') || static::gate($request);
+        })($request);
     }
 
     public static function gate(Request $request): bool
     {
-        return Gate::check('viewTransactionRetryDashboard', [$request->user()]);
+        $user = $request->user();
+
+        if (! $user) {
+            return false;
+        }
+
+        return Gate::forUser($user)->check('viewTransactionRetryDashboard');
+    }
+
+    /**
+     * Reset the auth callback (mainly for testing).
+     */
+    public static function resetAuth(): void
+    {
+        static::$authUsing = null;
     }
 }
