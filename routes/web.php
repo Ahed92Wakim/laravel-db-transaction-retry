@@ -73,6 +73,8 @@ if ($apiEnabled) {
             Route::get('metrics/routes-volume', [TransactionRetryEventController::class, 'routesVolume']);
             Route::get('metrics/exceptions', [TransactionRetryEventController::class, 'exceptions']);
             Route::get('metrics/exceptions/{event_hash}', [TransactionRetryEventController::class, 'exceptionGroup']);
+            Route::get('metrics/queries-volume', [TransactionRetryEventController::class, 'queriesVolume']);
+            Route::get('metrics/queries-duration', [TransactionRetryEventController::class, 'queriesDuration']);
             Route::get('metrics/queries', [TransactionRetryEventController::class, 'queries']);
         });
 }

@@ -392,21 +392,21 @@ export default function DbExceptionsClient() {
   return (
     <DashboardShell timeRange={timeRange} onTimeRangeChange={setTimeRange} rangeLabel={rangeLabel}>
       <section className="card chart-card chart-card--wide exceptions-summary">
-        <div className="card-header">
-          <div>
-            <p className="card-title">Exceptions</p>
-            <p className="card-subtitle">{rangeLabel}</p>
-          </div>
-          <span className="card-chip">{rangeShortLabel}</span>
-        </div>
+        {/*<div className="card-header">*/}
+        {/*  /!*<div>*!/*/}
+        {/*  /!*  <p className="card-title">Exceptions</p>*!/*/}
+        {/*  /!*  <p className="card-subtitle">{rangeLabel}</p>*!/*/}
+        {/*  /!*</div>*!/*/}
+        {/*  <span className="card-chip">{rangeShortLabel}</span>*/}
+        {/*</div>*/}
           <div className="chart-summary exceptions-summary__summary">
           <div className="chart-summary__main">
             <span className="chart-summary__label">Occurrences</span>
             <span className="chart-summary__value">{formatValue(summaryTotalOccurrences)}</span>
-            <span className="chart-summary__meta">
-              {formatValue(summaryUnique)} unique · {formatValue(summaryTotals.users)} users · last
-              seen {summaryLastSeenLabel}
-            </span>
+            {/*<span className="chart-summary__meta">*/}
+            {/*  {formatValue(summaryUnique)} unique · {formatValue(summaryTotals.users)} users · last*/}
+            {/*  seen {summaryLastSeenLabel}*/}
+            {/*</span>*/}
           </div>
         </div>
         <div className={`chart-frame${summaryMessage ? ' chart-frame--empty' : ''}`}>

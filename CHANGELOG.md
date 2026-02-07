@@ -11,6 +11,7 @@ The format is based on Keep a Changelog, and this project aims to follow Semanti
 - Added pagination support (`page`/`per_page`) for the `metrics/routes-volume` endpoint (with total count metadata).
 - Added pagination support (`page`/`per_page`) for the `metrics/routes` endpoint (with total count metadata).
 - Added Pest coverage for the install command, partition rolling command, slow transaction monitor logging flow, and dashboard authorization.
+- Added `metrics/queries-volume` and `metrics/queries-duration` endpoints for chart-specific transaction metrics.
 
 ### Fixed
 - Fixed metrics aggregation queries to group by route fields and avoid MySQL-only `ANY_VALUE` usage for broader database support.

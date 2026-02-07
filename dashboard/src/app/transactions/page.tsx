@@ -356,22 +356,12 @@ export default function TransactionsPage() {
             <section className="chart-pair">
                 <div className="chart-pair__grid">
                     <div className="card chart-card">
-                        <div className="card-header">
-                            <div>
-                                <p className="card-title">DB transaction volume</p>
-                                <p className="card-subtitle">
-                                    Logged transactions by duration - {rangeLabel}
-                                </p>
-                            </div>
-                            <span className="card-chip">{rangeShortLabel}</span>
-                        </div>
                         <div className="chart-summary">
                             <div className="chart-summary__main">
                                 <span className="chart-summary__label">Total transactions</span>
                                 <span className="chart-summary__value">
                   {formatOptionalNumber(transactionVolumeSummary.total)}
                 </span>
-                                <span className="chart-summary__meta">{rangeLabel}</span>
                             </div>
                             <div className="chart-summary__stats">
                                 <div className="chart-summary__stat">
@@ -424,20 +414,10 @@ export default function TransactionsPage() {
                     </div>
 
                     <div className="card chart-card">
-                        <div className="card-header">
-                            <div>
-                                <p className="card-title">Query duration</p>
-                                <p className="card-subtitle">
-                                    Avg vs p95 execution time (ms) - {rangeLabel}
-                                </p>
-                            </div>
-                            <span className="card-chip">{rangeShortLabel}</span>
-                        </div>
                         <div className="chart-summary">
                             <div className="chart-summary__main">
                                 <span className="chart-summary__label">Duration range</span>
                                 <span className="chart-summary__value">{queryDurationRange}</span>
-                                <span className="chart-summary__meta">{rangeLabel}</span>
                             </div>
                             <div className="chart-summary__stats">
                                 <div className="chart-summary__stat">

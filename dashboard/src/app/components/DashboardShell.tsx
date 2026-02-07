@@ -129,6 +129,35 @@ export default function DashboardShell({
     return () => controller.abort();
   }, [rangeQuery]);
 
+  const activeNavItem = useMemo(() => {
+    return navItems.find((item) => {
+      if (!item.href) return false;
+      if (!pathname) return false;
+      
+      // Normalize pathname to remove trailing slash for exact match check
+      const normalizedPath = pathname.endsWith('/') && pathname.length > 1 
+        ? pathname.slice(0, -1) 
+        : pathname;
+        
+      return normalizedPath === item.href || normalizedPath.startsWith(`${item.href}/`);
+    });
+  }, [pathname]);
+
+  const pageTitle = useMemo(() => {
+    if (!activeNavItem) return 'Transaction Retry Dashboard';
+    
+    switch (activeNavItem.href) {
+      case '/transactions':
+        return 'Transaction Logs';
+      case '/retry-traffic':
+        return 'Retry Traffic Analysis';
+      case '/db-exceptions':
+        return 'Database Exception Reports';
+      default:
+        return activeNavItem.label;
+    }
+  }, [activeNavItem]);
+
   return (
     <main className="dashboard-shell">
       <aside className="sidebar">
@@ -145,9 +174,7 @@ export default function DashboardShell({
           </div>
           <nav className="sidebar__nav">
             {navItems.map((item) => {
-              const isActive = item.href
-                ? pathname === item.href || pathname?.startsWith(`${item.href}/`)
-                : false;
+              const isActive = item === activeNavItem;
               const classes = `sidebar__item${isActive ? ' sidebar__item--active' : ''}${
                 item.disabled ? ' sidebar__item--disabled' : ''
               }`;
@@ -226,29 +253,33 @@ export default function DashboardShell({
 
       <div className="dashboard">
         <header className="dashboard-header">
-          <div className="dashboard-header__intro">
-            <span className="eyebrow">Retry telemetry</span>
-            <h1 className="dashboard-header__title">Transaction Retry Command Center</h1>
-            <p className="dashboard-header__subtitle">
-              Window: {rangeLabel}. Metrics update across the dashboard.
-            </p>
-          </div>
-          <div className="date-filter" role="group" aria-label="Date range">
-            <span className="date-filter__label">Date range</span>
-            <div className="date-filter__options">
-              {timeRanges.map((range) => (
-                <button
-                  key={range.value}
-                  type="button"
-                  className={`date-filter__button${
-                    range.value === timeRange ? ' date-filter__button--active' : ''
-                  }`}
-                  onClick={() => onTimeRangeChange(range.value)}
-                  aria-pressed={range.value === timeRange}
-                >
-                  {range.label}
-                </button>
-              ))}
+          {/*<div className="dashboard-header__content">*/}
+            <div className="dashboard-header__intro">
+              <span className="eyebrow">
+                {pageTitle}
+              </span>
+              {/*<h1 className="dashboard-header__title">Transaction Retry Command Center</h1>*/}
+              {/*<p className="dashboard-header__subtitle">*/}
+              {/*  Window: {rangeLabel}. Metrics update across the dashboard.*/}
+              {/*</p>*/}
+            </div>
+            <div className="date-filter" role="group" aria-label="Date range">
+              {/*<span className="date-filter__label">Date range</span>*/}
+              <div className="date-filter__options">
+                {timeRanges.map((range) => (
+                  <button
+                    key={range.value}
+                    type="button"
+                    className={`date-filter__button${
+                      range.value === timeRange ? ' date-filter__button--active' : ''
+                    }`}
+                    onClick={() => onTimeRangeChange(range.value)}
+                    aria-pressed={range.value === timeRange}
+                  >
+                    {range.label}
+                  </button>
+                ))}
+              {/*</div>*/}
             </div>
           </div>
         </header>

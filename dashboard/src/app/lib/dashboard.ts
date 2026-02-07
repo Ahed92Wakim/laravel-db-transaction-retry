@@ -56,6 +56,23 @@ export type QueryMetric = {
   over_2s: number;
 };
 
+export type TransactionVolumeMetric = {
+  time: string;
+  timestamp?: string;
+  transaction_count: number;
+  transaction_volume: number;
+  under_2s: number;
+  over_2s: number;
+};
+
+export type QueryDurationMetric = {
+  time: string;
+  timestamp?: string;
+  count: number;
+  avg_ms: number;
+  p95_ms: number;
+};
+
 export const resolveBucket = (value?: string | null): Bucket | null => {
   const normalized = value?.toLowerCase();
 

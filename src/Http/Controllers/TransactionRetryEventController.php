@@ -576,6 +576,175 @@ class TransactionRetryEventController
         ]);
     }
 
+    public function queriesVolume(Request $request): JsonResponse
+    {
+        $logTable               = (string)config('database-transaction-retry.slow_transactions.log_table', 'db_transaction_logs');
+        $connection             = $this->resolveSlowTransactionConnection();
+        [$start, $end, $window] = $this->resolveRange($request, '24h');
+        $bucket                 = $this->bucketForQueryWindow($window, $start, $end);
+
+        $driver           = $connection->getDriverName();
+        $bucketExpression = $this->bucketExpression($bucket, $driver, 'l.completed_at');
+        $bucketFormat     = $this->bucketFormat($bucket);
+        $labelFormat      = $this->labelFormat($bucket);
+
+        $durationRows = $connection->table("{$logTable} as l")
+            ->selectRaw("{$bucketExpression} as bucket")
+            ->selectRaw('COUNT(*) as transaction_volume')
+            ->selectRaw('COUNT(*) as transaction_count')
+            ->selectRaw(
+                'SUM(CASE WHEN l.elapsed_ms < 2000 THEN 1 ELSE 0 END) as under_2s'
+            )
+            ->selectRaw(
+                'SUM(CASE WHEN l.elapsed_ms >= 2000 THEN 1 ELSE 0 END) as over_2s'
+            )
+            ->whereNotNull('l.completed_at')
+            ->where('l.completed_at', '>=', $start)
+            ->where('l.completed_at', '<=', $end)
+            ->groupBy('bucket')
+            ->orderBy('bucket')
+            ->get();
+
+        $durationMetricsByBucket = [];
+        foreach ($durationRows as $row) {
+            $bucketKey = (string)$row->bucket;
+
+            $durationMetricsByBucket[$bucketKey] = [
+                'transaction_volume' => (int)$row->transaction_volume,
+                'transaction_count'  => (int)$row->transaction_count,
+                'under_2s'           => (int)$row->under_2s,
+                'over_2s'            => (int)$row->over_2s,
+            ];
+        }
+
+        $seriesStart = $this->alignToBucket($start, $bucket);
+        $seriesEnd   = $this->alignToBucket($end, $bucket);
+
+        $series = [];
+        $cursor = $seriesStart->copy();
+        while ($cursor->lte($seriesEnd)) {
+            $bucketKey = $cursor->format($bucketFormat);
+            $duration  = $durationMetricsByBucket[$bucketKey] ?? [
+                'transaction_volume' => 0,
+                'transaction_count'  => 0,
+                'under_2s'           => 0,
+                'over_2s'            => 0,
+            ];
+
+            $series[] = [
+                'time'               => $cursor->format($labelFormat),
+                'timestamp'          => $cursor->toIso8601String(),
+                'transaction_count'  => $duration['transaction_count'],
+                'transaction_volume' => $duration['transaction_volume'],
+                'under_2s'           => $duration['under_2s'],
+                'over_2s'            => $duration['over_2s'],
+            ];
+
+            $cursor = $this->advanceCursor($cursor, $bucket);
+        }
+
+        return response()->json([
+            'data' => $series,
+            'meta' => [
+                'from'   => $start->toIso8601String(),
+                'to'     => $end->toIso8601String(),
+                'window' => $window,
+                'bucket' => $bucket,
+            ],
+        ]);
+    }
+
+    public function queriesDuration(Request $request): JsonResponse
+    {
+        $logTable               = (string)config('database-transaction-retry.slow_transactions.log_table', 'db_transaction_logs');
+        $queryTable             = (string)config('database-transaction-retry.slow_transactions.query_table', 'db_transaction_queries');
+        $connection             = $this->resolveSlowTransactionConnection();
+        [$start, $end, $window] = $this->resolveRange($request, '24h');
+        $bucket                 = $this->bucketForQueryWindow($window, $start, $end);
+
+        $driver           = $connection->getDriverName();
+        $bucketExpression = $this->bucketExpression($bucket, $driver, 'l.completed_at');
+        $bucketFormat     = $this->bucketFormat($bucket);
+        $labelFormat      = $this->labelFormat($bucket);
+
+        $baseQuery = $connection->table("{$queryTable} as q")
+            ->join("{$logTable} as l", 'q.transaction_log_id', '=', 'l.id')
+            ->whereNotNull('l.completed_at')
+            ->where('l.completed_at', '>=', $start)
+            ->where('l.completed_at', '<=', $end);
+
+        $rows = (clone $baseQuery)
+            ->selectRaw("{$bucketExpression} as bucket")
+            ->selectRaw('COUNT(*) as count')
+            ->selectRaw('AVG(q.execution_time_ms) as avg_ms')
+            ->groupBy('bucket')
+            ->orderBy('bucket')
+            ->get();
+
+        $metricsByBucket = [];
+        foreach ($rows as $row) {
+            $bucketKey  = (string)$row->bucket;
+            $queryCount = (int)$row->count;
+            $avgMs      = $queryCount > 0 ? round((float)$row->avg_ms, 2) : 0;
+
+            $metricsByBucket[$bucketKey] = [
+                'count'  => $queryCount,
+                'avg_ms' => $avgMs,
+                'p95_ms' => 0,
+            ];
+        }
+
+        foreach ($metricsByBucket as $bucketKey => $metrics) {
+            if ($metrics['count'] === 0) {
+                continue;
+            }
+
+            $offset = max((int)ceil($metrics['count'] * 0.95) - 1, 0);
+            $p95Ms  = (clone $baseQuery)
+                ->whereRaw("{$bucketExpression} = ?", [$bucketKey])
+                ->orderBy('q.execution_time_ms')
+                ->offset($offset)
+                ->limit(1)
+                ->value('q.execution_time_ms');
+
+            $metricsByBucket[$bucketKey]['p95_ms'] = is_numeric($p95Ms) ? (int)$p95Ms : 0;
+        }
+
+        $seriesStart = $this->alignToBucket($start, $bucket);
+        $seriesEnd   = $this->alignToBucket($end, $bucket);
+
+        $series = [];
+        $cursor = $seriesStart->copy();
+        while ($cursor->lte($seriesEnd)) {
+            $bucketKey = $cursor->format($bucketFormat);
+            $metrics   = $metricsByBucket[$bucketKey] ?? [
+                'count'  => 0,
+                'avg_ms' => 0,
+                'p95_ms' => 0,
+            ];
+
+            $series[] = [
+                'time'      => $cursor->format($labelFormat),
+                'timestamp' => $cursor->toIso8601String(),
+                'count'     => $metrics['count'],
+                'avg_ms'    => $metrics['avg_ms'],
+                'p95_ms'    => $metrics['p95_ms'],
+            ];
+
+            $cursor = $this->advanceCursor($cursor, $bucket);
+        }
+
+        return response()->json([
+            'data' => $series,
+            'meta' => [
+                'from'   => $start->toIso8601String(),
+                'to'     => $end->toIso8601String(),
+                'window' => $window,
+                'bucket' => $bucket,
+            ],
+        ]);
+    }
+
     public function queries(Request $request): JsonResponse
     {
         $logTable               = (string)config('database-transaction-retry.slow_transactions.log_table', 'db_transaction_logs');
