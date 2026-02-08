@@ -1,6 +1,6 @@
 'use client';
 
-import {useEffect, useMemo, useState} from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Area,
   CartesianGrid,
@@ -12,7 +12,7 @@ import {
   YAxis,
 } from 'recharts';
 import DashboardShell from '../components/DashboardShell';
-import {ChartTooltip} from '../components/dashboard-ui';
+import { ChartTooltip } from '../components/dashboard-ui';
 import {
   apiBase,
   bucketForRange,
@@ -29,9 +29,6 @@ import {
   type TimeRangeValue,
 } from '../lib/dashboard';
 
-const kpiBase = [
-  {label: 'Escalations', value: '7', delta: '+2 incidents', down: true},
-];
 const routeMetricsPageSize = 10;
 
 export default function RetryTrafficPage() {
@@ -96,7 +93,7 @@ export default function RetryTrafficPage() {
       try {
         const response = await fetch(`${apiBase}/metrics/today?${rangeQuery}`, {
           signal: controller.signal,
-          headers: {Accept: 'application/json'},
+          headers: { Accept: 'application/json' },
         });
 
         if (!response.ok) {
@@ -145,7 +142,7 @@ export default function RetryTrafficPage() {
       try {
         const response = await fetch(`${apiBase}/metrics/traffic?${rangeQuery}`, {
           signal: controller.signal,
-          headers: {Accept: 'application/json'},
+          headers: { Accept: 'application/json' },
         });
 
         if (!response.ok) {
@@ -162,7 +159,7 @@ export default function RetryTrafficPage() {
             failure?: number | string;
             recovered?: number | string;
           }>;
-          meta?: {bucket?: string};
+          meta?: { bucket?: string };
         };
         const series = Array.isArray(payload?.data) ? payload.data : [];
         const normalized = series.map((point) => ({
@@ -202,7 +199,7 @@ export default function RetryTrafficPage() {
           `${apiBase}/metrics/routes?${params.toString()}`,
           {
             signal: controller.signal,
-            headers: {Accept: 'application/json'},
+            headers: { Accept: 'application/json' },
           }
         );
 
@@ -277,7 +274,12 @@ export default function RetryTrafficPage() {
       delta: rangeLabel,
       down: false,
     },
-    ...kpiBase,
+    {
+      label: 'Routes',
+      value: formatValue(routeMetricsTotal),
+      delta: rangeLabel,
+      down: false,
+    },
   ];
   const retryTrafficMessage =
     retryTrafficStatus === 'loading'
@@ -359,7 +361,7 @@ export default function RetryTrafficPage() {
               <p className="chart-empty">{retryTrafficMessage}</p>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={retryTrafficDisplay} margin={{top: 10, right: 20, left: 0, bottom: 0}}>
+                <ComposedChart data={retryTrafficDisplay} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="retryFill" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.4} />
