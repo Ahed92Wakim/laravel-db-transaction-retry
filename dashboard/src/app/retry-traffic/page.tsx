@@ -37,6 +37,10 @@ export default function RetryTrafficPage() {
   const [attemptRecords, setAttemptRecords] = useState<number | null>(null);
   const [successRecords, setSuccessRecords] = useState<number | null>(null);
   const [failureRecords, setFailureRecords] = useState<number | null>(null);
+  const [prevAttemptRecords, setPrevAttemptRecords] = useState<number | null>(null);
+  const [prevSuccessRecords, setPrevSuccessRecords] = useState<number | null>(null);
+  const [prevFailureRecords, setPrevFailureRecords] = useState<number | null>(null);
+  const [prevRouteMetricsTotal, setPrevRouteMetricsTotal] = useState<number | null>(null);
   const [retryTraffic, setRetryTraffic] = useState<
     Array<{
       time: string;
@@ -133,6 +137,97 @@ export default function RetryTrafficPage() {
 
     return () => controller.abort();
   }, [rangeQuery]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setPrevAttemptRecords(null);
+    setPrevSuccessRecords(null);
+    setPrevFailureRecords(null);
+    setPrevRouteMetricsTotal(null);
+
+    const load = async () => {
+      try {
+        // Calculate previous period based on current time window
+        const duration = timeWindow.to.getTime() - timeWindow.from.getTime();
+        const prevFrom = new Date(timeWindow.from.getTime() - duration);
+        const prevTo = new Date(timeWindow.to.getTime() - duration);
+
+        const params = new URLSearchParams({
+          from: prevFrom.toISOString(),
+          to: prevTo.toISOString(),
+          window: timeRange,
+        });
+
+        const response = await fetch(`${apiBase}/metrics/today?${params.toString()}`, {
+          signal: controller.signal,
+          headers: { Accept: 'application/json' },
+        });
+
+        if (!response.ok) {
+          return;
+        }
+
+        const payload = (await response.json()) as {
+          data?: {
+            attempt_records?: number | string;
+            success_records?: number | string;
+            failure_records?: number | string;
+          };
+        };
+        const attempt = Number(payload?.data?.attempt_records);
+        const success = Number(payload?.data?.success_records);
+        const failure = Number(payload?.data?.failure_records);
+
+        if (!Number.isNaN(attempt)) {
+          setPrevAttemptRecords(attempt);
+        }
+        if (!Number.isNaN(success)) {
+          setPrevSuccessRecords(success);
+        }
+        if (!Number.isNaN(failure)) {
+          setPrevFailureRecords(failure);
+        }
+
+        // Fetch previous period route count
+        const routeParams = new URLSearchParams({
+          from: prevFrom.toISOString(),
+          to: prevTo.toISOString(),
+          window: timeRange,
+          page: '1',
+          per_page: '1',
+        });
+
+        const routeResponse = await fetch(
+          `${apiBase}/metrics/routes?${routeParams.toString()}`,
+          {
+            signal: controller.signal,
+            headers: { Accept: 'application/json' },
+          }
+        );
+
+        if (routeResponse.ok) {
+          const routePayload = (await routeResponse.json()) as {
+            meta?: { total?: number | string };
+          };
+          const total = Number(routePayload?.meta?.total ?? 0);
+          if (Number.isFinite(total)) {
+            setPrevRouteMetricsTotal(total);
+          }
+        }
+      } catch (error) {
+        if ((error as Error).name !== 'AbortError') {
+          setPrevAttemptRecords(null);
+          setPrevSuccessRecords(null);
+          setPrevFailureRecords(null);
+          setPrevRouteMetricsTotal(null);
+        }
+      }
+    };
+
+    load();
+
+    return () => controller.abort();
+  }, [rangeQuery, timeRange, timeWindow]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -255,30 +350,55 @@ export default function RetryTrafficPage() {
     return () => controller.abort();
   }, [rangeQuery, routeMetricsPage]);
 
+  const calculatePercentageChange = (current: number | null, previous: number | null): { percentage: number; isDown: boolean } => {
+    if (current === null || previous === null) {
+      return { percentage: 0, isDown: false };
+    }
+    if (previous === 0) {
+      // If previous is 0 and current is not, show a 100% increase
+      return { percentage: current > 0 ? 100 : 0, isDown: false };
+    }
+    const change = ((current - previous) / previous) * 100;
+    return { percentage: change, isDown: change < 0 };
+  };
+
+  const attemptChange = calculatePercentageChange(attemptRecords, prevAttemptRecords);
+  const successChange = calculatePercentageChange(successRecords, prevSuccessRecords);
+  const failureChange = calculatePercentageChange(failureRecords, prevFailureRecords);
+  const routeChange = calculatePercentageChange(routeMetricsTotal, prevRouteMetricsTotal);
+
   const kpis = [
     {
       label: 'Attempts',
       value: attemptRecords === null ? '--' : formatValue(attemptRecords),
-      delta: rangeLabel,
-      down: false,
+      previousValue: prevAttemptRecords === null ? '--' : formatValue(prevAttemptRecords),
+      delta: `${attemptChange.isDown ? '' : '+'}${attemptChange.percentage.toFixed(1)}%`,
+      down: !attemptChange.isDown, // Inverted: the increase in retry attempts is bad (down=true), the decrease is good (down=false)
+      hasPercentage: true,
     },
     {
       label: 'Success',
       value: successRecords === null ? '--' : formatValue(successRecords),
-      delta: rangeLabel,
-      down: false,
+      previousValue: prevSuccessRecords === null ? '--' : formatValue(prevSuccessRecords),
+      delta: `${successChange.isDown ? '' : '+'}${successChange.percentage.toFixed(1)}%`,
+      down: successChange.isDown,
+      hasPercentage: true,
     },
     {
       label: 'Failure',
       value: failureRecords === null ? '--' : formatValue(failureRecords),
-      delta: rangeLabel,
-      down: false,
+      previousValue: prevFailureRecords === null ? '--' : formatValue(prevFailureRecords),
+      delta: `${failureChange.isDown ? '' : '+'}${failureChange.percentage.toFixed(1)}%`,
+      down: !failureChange.isDown, // Inverted: increase in failures is bad (down=true), decrease is good (down=false)
+      hasPercentage: true,
     },
     {
       label: 'Routes',
       value: formatValue(routeMetricsTotal),
-      delta: rangeLabel,
-      down: false,
+      previousValue: prevRouteMetricsTotal === null ? '--' : formatValue(prevRouteMetricsTotal),
+      delta: `${routeChange.isDown ? '' : '+'}${routeChange.percentage.toFixed(1)}%`,
+      down: !routeChange.isDown, // Inverted: increase in failing routes is bad (down=true), decrease is good (down=false)
+      hasPercentage: true,
     },
   ];
   const retryTrafficMessage =
@@ -338,11 +458,17 @@ export default function RetryTrafficPage() {
           <div className="card metric-card" key={kpi.label}>
             <span className="metric-card__label">{kpi.label}</span>
             <span className="metric-card__value">{kpi.value}</span>
-            <span
-              className={`metric-card__delta${kpi.down ? ' metric-card__delta--down' : ''}`}
-            >
-              {kpi.delta}
-            </span>
+            <div className="metric-card__footer">
+              <span className="metric-card__previous">Previous: {kpi.previousValue}</span>
+              <span
+                className={`metric-card__delta${kpi.down ? ' metric-card__delta--down' : ''}${kpi.hasPercentage ? ' metric-card__delta--percentage' : ''}`}
+              >
+                {kpi.hasPercentage && (
+                  <span className="metric-card__trend-icon">{kpi.down ? '↓' : '↑'}</span>
+                )}
+                {kpi.delta}
+              </span>
+            </div>
           </div>
         ))}
       </section>

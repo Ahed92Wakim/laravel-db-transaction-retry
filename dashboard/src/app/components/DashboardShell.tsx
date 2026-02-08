@@ -1,9 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import {usePathname} from 'next/navigation';
-import {type ReactNode, useEffect, useMemo, useState} from 'react';
-import {useTheme} from './ThemeProvider';
+import { usePathname } from 'next/navigation';
+import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { useTheme } from './ThemeProvider';
 import {
   apiBase,
   formatOptionalNumber,
@@ -20,10 +20,10 @@ const navItems: Array<{
   tone?: 'warn';
   disabled?: boolean;
 }> = [
-  {label: 'Transactions', href: '/transactions'},
-  {label: 'Retry traffic', href: '/retry-traffic'},
-  {label: 'DB exceptions', href: '/db-exceptions'},
-];
+    { label: 'Transactions', href: '/transactions' },
+    { label: 'Retry traffic', href: '/retry-traffic' },
+    { label: 'DB exceptions', href: '/db-exceptions' },
+  ];
 
 type StatusItem = {
   label: string;
@@ -45,7 +45,7 @@ export default function DashboardShell({
   children,
 }: DashboardShellProps) {
   const pathname = usePathname();
-  const {theme, toggleTheme} = useTheme();
+  const { theme, toggleTheme } = useTheme();
   const [issuesCount, setIssuesCount] = useState<number | null>(null);
   const [retryAttemptCount, setRetryAttemptCount] = useState<number | null>(null);
   const [retryFailureCount, setRetryFailureCount] = useState<number | null>(null);
@@ -69,9 +69,9 @@ export default function DashboardShell({
       retryFailureCount == null ? undefined : retryFailureCount > 0 ? 'warn' : 'ok';
 
     return [
-      {label: 'DB Exceptions', value: issuesValue, tone: issuesTone},
-      {label: 'Retry failures', value: retryFailuresValue, tone: retryFailuresTone},
-      {label: 'Retry attempts', value: retryAttemptsValue},
+      { label: 'DB Exceptions', value: issuesValue, tone: issuesTone },
+      { label: 'Retry failures', value: retryFailuresValue, tone: retryFailuresTone },
+      { label: 'Retry attempts', value: retryAttemptsValue },
     ];
   }, [issuesCount, retryAttemptCount, retryFailureCount]);
 
@@ -87,18 +87,18 @@ export default function DashboardShell({
         const [exceptionsResult, todayResult] = await Promise.allSettled([
           fetch(`${apiBase}/metrics/exceptions?${rangeQuery}&limit=1`, {
             signal: controller.signal,
-            headers: {Accept: 'application/json'},
+            headers: { Accept: 'application/json' },
           }),
           fetch(`${apiBase}/metrics/today?${rangeQuery}`, {
             signal: controller.signal,
-            headers: {Accept: 'application/json'},
+            headers: { Accept: 'application/json' },
           }),
         ]);
 
         if (exceptionsResult.status === 'fulfilled' && exceptionsResult.value.ok) {
           const payload = (await exceptionsResult.value.json()) as {
             data?: unknown[];
-            meta?: {unique?: number | string};
+            meta?: { unique?: number | string };
           };
           const unique =
             payload?.meta?.unique ?? (Array.isArray(payload?.data) ? payload.data.length : null);
@@ -133,19 +133,19 @@ export default function DashboardShell({
     return navItems.find((item) => {
       if (!item.href) return false;
       if (!pathname) return false;
-      
+
       // Normalize pathname to remove trailing slash for exact match check
-      const normalizedPath = pathname.endsWith('/') && pathname.length > 1 
-        ? pathname.slice(0, -1) 
+      const normalizedPath = pathname.endsWith('/') && pathname.length > 1
+        ? pathname.slice(0, -1)
         : pathname;
-        
+
       return normalizedPath === item.href || normalizedPath.startsWith(`${item.href}/`);
     });
   }, [pathname]);
 
   const pageTitle = useMemo(() => {
     if (!activeNavItem) return 'Transaction Retry Dashboard';
-    
+
     switch (activeNavItem.href) {
       case '/transactions':
         return 'Transaction Logs';
@@ -172,12 +172,12 @@ export default function DashboardShell({
               <p className="sidebar__title">Retry Control</p>
             </div>
           </div>
+          <div className="sidebar__separator"></div>
           <nav className="sidebar__nav">
             {navItems.map((item) => {
               const isActive = item === activeNavItem;
-              const classes = `sidebar__item${isActive ? ' sidebar__item--active' : ''}${
-                item.disabled ? ' sidebar__item--disabled' : ''
-              }`;
+              const classes = `sidebar__item${isActive ? ' sidebar__item--active' : ''}${item.disabled ? ' sidebar__item--disabled' : ''
+                }`;
 
               if (item.href && !item.disabled) {
                 return (
@@ -190,9 +190,8 @@ export default function DashboardShell({
                     <span>{item.label}</span>
                     {item.badge ? (
                       <span
-                        className={`sidebar__pill${
-                          item.tone === 'warn' ? ' sidebar__pill--warn' : ''
-                        }`}
+                        className={`sidebar__pill${item.tone === 'warn' ? ' sidebar__pill--warn' : ''
+                          }`}
                       >
                         {item.badge}
                       </span>
@@ -206,9 +205,8 @@ export default function DashboardShell({
                   <span>{item.label}</span>
                   {item.badge ? (
                     <span
-                      className={`sidebar__pill${
-                        item.tone === 'warn' ? ' sidebar__pill--warn' : ''
-                      }`}
+                      className={`sidebar__pill${item.tone === 'warn' ? ' sidebar__pill--warn' : ''
+                        }`}
                     >
                       {item.badge}
                     </span>
@@ -235,13 +233,12 @@ export default function DashboardShell({
               <div className="sidebar__status" key={item.label}>
                 <span className="sidebar__status-label">{item.label}</span>
                 <span
-                  className={`sidebar__status-value${
-                    item.tone === 'ok'
+                  className={`sidebar__status-value${item.tone === 'ok'
                       ? ' sidebar__status-value--ok'
                       : item.tone === 'warn'
                         ? ' sidebar__status-value--warn'
                         : ''
-                  }`}
+                    }`}
                 >
                   {item.value}
                 </span>
@@ -254,31 +251,30 @@ export default function DashboardShell({
       <div className="dashboard">
         <header className="dashboard-header">
           {/*<div className="dashboard-header__content">*/}
-            <div className="dashboard-header__intro">
-              <span className="eyebrow">
-                {pageTitle}
-              </span>
-              {/*<h1 className="dashboard-header__title">Transaction Retry Command Center</h1>*/}
-              {/*<p className="dashboard-header__subtitle">*/}
-              {/*  Window: {rangeLabel}. Metrics update across the dashboard.*/}
-              {/*</p>*/}
-            </div>
-            <div className="date-filter" role="group" aria-label="Date range">
-              {/*<span className="date-filter__label">Date range</span>*/}
-              <div className="date-filter__options">
-                {timeRanges.map((range) => (
-                  <button
-                    key={range.value}
-                    type="button"
-                    className={`date-filter__button${
-                      range.value === timeRange ? ' date-filter__button--active' : ''
+          <div className="dashboard-header__intro">
+            <span className="eyebrow">
+              {pageTitle}
+            </span>
+            {/*<h1 className="dashboard-header__title">Transaction Retry Command Center</h1>*/}
+            {/*<p className="dashboard-header__subtitle">*/}
+            {/*  Window: {rangeLabel}. Metrics update across the dashboard.*/}
+            {/*</p>*/}
+          </div>
+          <div className="date-filter" role="group" aria-label="Date range">
+            {/*<span className="date-filter__label">Date range</span>*/}
+            <div className="date-filter__options">
+              {timeRanges.map((range) => (
+                <button
+                  key={range.value}
+                  type="button"
+                  className={`date-filter__button${range.value === timeRange ? ' date-filter__button--active' : ''
                     }`}
-                    onClick={() => onTimeRangeChange(range.value)}
-                    aria-pressed={range.value === timeRange}
-                  >
-                    {range.label}
-                  </button>
-                ))}
+                  onClick={() => onTimeRangeChange(range.value)}
+                  aria-pressed={range.value === timeRange}
+                >
+                  {range.label}
+                </button>
+              ))}
               {/*</div>*/}
             </div>
           </div>
