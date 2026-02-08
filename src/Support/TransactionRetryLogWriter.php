@@ -2,204 +2,48 @@
 
 namespace DatabaseTransactions\RetryHelper\Support;
 
-use DatabaseTransactions\RetryHelper\Enums\LogLevel;
-use DatabaseTransactions\RetryHelper\Enums\RetryStatus;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
-use Psr\Log\LoggerInterface;
-use Throwable;
+use DatabaseTransactions\RetryHelper\Contracts\LogDriverInterface;
+use DatabaseTransactions\RetryHelper\Support\LogDrivers\DatabaseLogDriver;
+use DatabaseTransactions\RetryHelper\Support\LogDrivers\FileLogDriver;
 
 class TransactionRetryLogWriter
 {
+    /**
+     * Map of available drivers.
+     *
+     * @var array<string, class-string<LogDriverInterface>>
+     */
+    protected static array $drivers = [
+        'database' => DatabaseLogDriver::class,
+        'db'       => DatabaseLogDriver::class,
+        'log'      => FileLogDriver::class,
+        'file'     => FileLogDriver::class,
+    ];
+
+    /**
+     * Write the log entry using the configured driver.
+     *
+     * @param array $payload
+     * @param string $logFileName
+     * @param string $level
+     * @return void
+     */
     public static function write(array $payload, string $logFileName, string $level = 'error'): void
     {
-        $driver = static::loggingDriver();
+        $driverName = static::loggingDriver();
+        $driverClass = static::$drivers[$driverName] ?? FileLogDriver::class;
 
-        if ($driver === 'database' || $driver === 'db') {
-            static::writeToDatabase($payload, $level);
+        /** @var LogDriverInterface $driver */
+        $driver = new $driverClass();
 
-            return;
-        }
-
-        $logger = static::resolveLogger($logFileName);
-
-        $levels = static::configuredLevels();
-
-        $context  = is_array($payload) ? $payload : ['message' => (string) $payload];
-        $attempts = (int) ($context['attempt'] ?? 0);
-        $max      = (int) ($context['maxRetries'] ?? 0);
-        $label    = (string) ($context['trxLabel'] ?? '');
-
-        $normalizedLevel = static::normalizeLevel($level, $levels['failure']);
-        $defaultStatus   = $normalizedLevel === $levels['success']
-                ? RetryStatus::Success->value
-                : RetryStatus::Failure->value;
-        $status      = RetryStatus::normalize($context['retryStatus'] ?? null, $defaultStatus);
-        $statusLabel = strtoupper(
-            $status === RetryStatus::Success->value ? 'SUCCESS' : 'FAILED'
-        );
-
-        $exceptionClass = (string) ($context['exceptionClass'] ?? 'UnknownException');
-        $sqlState       = (string) ($context['sqlState'] ?? '');
-        $driverCode     = $context['driverCode'] ?? null;
-
-        $codeParts                             = [];
-        $sqlState !== ''       && $codeParts[] = 'SQLSTATE ' . $sqlState;
-        ! is_null($driverCode) && $codeParts[] = 'Driver ' . $driverCode;
-
-        $exceptionSummary = trim($exceptionClass . (count($codeParts) > 0 ? ' (' . implode(', ', $codeParts) . ')' : ''));
-
-        $title = sprintf(
-            '[%s] [DATABASE TRANSACTION RETRY - %s] %s After (Attempts: %d/%d) - %s',
-            $label,
-            $statusLabel,
-            $exceptionSummary,
-            $attempts,
-            $max,
-            ucfirst($normalizedLevel)
-        );
-
-        $logger->log($normalizedLevel, $title, $context);
+        $driver->write($payload, $logFileName, $level);
     }
 
-    protected static function writeToDatabase(array $payload, string $level): void
-    {
-        if (! class_exists(DB::class)) {
-            return;
-        }
-
-        $context = is_array($payload) ? $payload : ['message' => (string) $payload];
-        $levels  = static::configuredLevels();
-
-        $normalizedLevel = static::normalizeLevel($level, $levels['failure']);
-        $defaultStatus   = $normalizedLevel === $levels['success']
-                ? RetryStatus::Success->value
-                : RetryStatus::Failure->value;
-        $status = RetryStatus::normalize($context['retryStatus'] ?? null, $defaultStatus);
-
-        $attempts     = (int) ($context['attempt'] ?? 0);
-        $max          = (int) ($context['maxRetries'] ?? 0);
-        $label        = (string) ($context['trxLabel'] ?? '');
-        $retryGroupId = (string) ($context['retryGroupId'] ?? ($context['retry_group_id'] ?? ''));
-
-        $exceptionClass = (string) ($context['exceptionClass'] ?? '');
-        $sqlState       = strtoupper((string) ($context['sqlState'] ?? ''));
-        $driverCode     = $context['driverCode'] ?? null;
-        $connection     = $context['connection'] ?? null;
-        $rawSql         = $context['rawSql']     ?? null;
-        $errorInfo      = $context['errorInfo']  ?? null;
-
-        $method        = $context['method']        ?? null;
-        $routeName     = $context['routeName']     ?? ($context['route_name'] ?? null);
-        $url           = $context['url']           ?? null;
-        $userId        = $context['userId']        ?? null;
-        $userType      = $context['userType']      ?? ($context['user_type'] ?? null);
-        $authHeaderLen = $context['authHeaderLen'] ?? null;
-
-        $userIdValue = is_null($userId)
-            ? null
-            : (is_scalar($userId) || (is_object($userId) && method_exists($userId, '__toString'))
-                ? (string) $userId
-                : null);
-        $userTypeValue = is_null($userType)
-            ? null
-            : (is_scalar($userType) || (is_object($userType) && method_exists($userType, '__toString'))
-                ? (string) $userType
-                : null);
-        $authHeaderLenValue = ! is_numeric($authHeaderLen) ? null : (int) $authHeaderLen;
-
-        $occurredAt = function_exists('now') ? now() : date('Y-m-d H:i:s');
-
-        $routeHash = static::hashFromParts([$method, $routeName, $url]);
-        $queryHash = static::hashFromParts([$rawSql]);
-        $eventHash = static::hashFromParts([
-            $status,
-            $normalizedLevel,
-            $attempts,
-            $max,
-            $label,
-            $exceptionClass,
-            $sqlState,
-            $driverCode,
-            $connection,
-            $rawSql,
-            $method,
-            $url,
-            $routeName,
-            $userIdValue,
-            $userTypeValue,
-        ]);
-
-        if ($retryGroupId === '') {
-            $retryGroupId = $eventHash ?? (static::hashFromParts([$occurredAt, $label]) ?? 'unknown');
-        }
-
-        $contextPayload = $context;
-        foreach ([
-            'attempt',
-            'maxRetries',
-            'trxLabel',
-            'retryGroupId',
-            'retry_group_id',
-            'exceptionClass',
-            'sqlState',
-            'driverCode',
-            'connection',
-            'rawSql',
-            'errorInfo',
-            'method',
-            'routeName',
-            'route_name',
-            'url',
-            'userId',
-            'userType',
-            'user_type',
-            'authHeaderLen',
-            'retryStatus',
-        ] as $key) {
-            unset($contextPayload[$key]);
-        }
-
-        $row = [
-            'occurred_at'     => $occurredAt,
-            'retry_status'    => $status,
-            'log_level'       => $normalizedLevel,
-            'attempt'         => $attempts,
-            'max_retries'     => $max,
-            'trx_label'       => $label !== '' ? $label : null,
-            'retry_group_id'  => $retryGroupId,
-            'exception_class' => $exceptionClass !== '' ? $exceptionClass : null,
-            'sql_state'       => $sqlState       !== '' ? $sqlState : null,
-            'driver_code'     => is_null($driverCode) ? null : (int) $driverCode,
-            'connection'      => is_null($connection) ? null : (string) $connection,
-            'raw_sql'         => is_null($rawSql) ? null : (string) $rawSql,
-            'error_info'      => static::encodeJson($errorInfo),
-            'method'          => is_null($method) ? null : (string) $method,
-            'route_name'      => is_null($routeName) ? null : (string) $routeName,
-            'url'             => is_null($url) ? null : (string) $url,
-            'user_id'         => $userIdValue,
-            'user_type'       => $userTypeValue,
-            'auth_header_len' => $authHeaderLenValue,
-            'route_hash'      => $routeHash,
-            'query_hash'      => $queryHash,
-            'event_hash'      => $eventHash,
-            'context'         => static::encodeJson($contextPayload),
-            'created_at'      => $occurredAt,
-            'updated_at'      => $occurredAt,
-        ];
-
-        $table = static::loggingTable();
-        if ($table === '') {
-            return;
-        }
-
-        try {
-            DB::table($table)->insert($row);
-        } catch (Throwable) {
-            // Never block transaction flow if persistence fails.
-        }
-    }
-
+    /**
+     * Get the configured logging driver name.
+     *
+     * @return string
+     */
     protected static function loggingDriver(): string
     {
         if (! function_exists('config')) {
@@ -216,131 +60,15 @@ class TransactionRetryLogWriter
         return $driver === '' ? 'database' : $driver;
     }
 
-    protected static function loggingTable(): string
+    /**
+     * Register a custom log driver.
+     *
+     * @param string $name
+     * @param class-string<LogDriverInterface> $driverClass
+     * @return void
+     */
+    public static function extend(string $name, string $driverClass): void
     {
-        $default = 'transaction_retry_events';
-
-        if (! function_exists('config')) {
-            return $default;
-        }
-
-        $config = config('database-transaction-retry.logging', []);
-        if (! is_array($config)) {
-            return $default;
-        }
-
-        $table = trim((string) ($config['table'] ?? $default));
-
-        return $table === '' ? $default : $table;
-    }
-
-    protected static function hashFromParts(array $parts): ?string
-    {
-        $string = implode('|', array_map(static fn ($part) => is_scalar($part) ? (string) $part : '', $parts));
-
-        $string = trim($string, '|');
-
-        if ($string === '') {
-            return null;
-        }
-
-        return hash('sha256', $string);
-    }
-
-    protected static function encodeJson(mixed $value): ?string
-    {
-        if (is_null($value)) {
-            return null;
-        }
-
-        $encoded = json_encode($value);
-
-        return $encoded === false ? null : $encoded;
-    }
-
-    protected static function resolveLogger(string $logFileName): LoggerInterface
-    {
-        $logging = [];
-
-        if (function_exists('config')) {
-            $config = config('database-transaction-retry.logging', []);
-            if (is_array($config)) {
-                $logging = $config;
-            }
-        }
-
-        if (! empty($logging['channel']) && $logger = static::resolveChannel($logging['channel'])) {
-            return $logger;
-        }
-
-        if (! empty($logging['config']) && is_array($logging['config'])) {
-            if ($logger = static::resolveBuilder($logging['config'])) {
-                return $logger;
-            }
-        }
-
-        return static::defaultLogger($logFileName);
-    }
-
-    protected static function resolveChannel(string $channel): ?LoggerInterface
-    {
-        try {
-            return Log::channel($channel);
-        } catch (Throwable) {
-            return null;
-        }
-    }
-
-    protected static function resolveBuilder(array $config): ?LoggerInterface
-    {
-        try {
-            return Log::build($config);
-        } catch (Throwable) {
-            return null;
-        }
-    }
-
-    protected static function defaultLogger(string $logFileName): LoggerInterface
-    {
-        $date = function_exists('now') ? now()->toDateString() : date('Y-m-d');
-
-        $logFilePath = empty($logFileName)
-            ? storage_path('logs/' . $date . '/general.log')
-            : storage_path('logs/' . $date . "/{$logFileName}.log");
-
-        return Log::build([
-            'driver' => 'single',
-            'path'   => $logFilePath,
-        ]);
-    }
-
-    protected static function configuredLevels(): array
-    {
-        $defaults = [
-            'success' => 'warning',
-            'failure' => 'error',
-        ];
-
-        if (! function_exists('config')) {
-            return $defaults;
-        }
-
-        $levels = config('database-transaction-retry.logging.levels', []);
-
-        if (! is_array($levels)) {
-            return $defaults;
-        }
-
-        return [
-            'success' => static::normalizeLevel($levels['success'] ?? null, $defaults['success']),
-            'failure' => static::normalizeLevel($levels['failure'] ?? null, $defaults['failure']),
-        ];
-    }
-
-    protected static function normalizeLevel(?string $level, string $fallback): string
-    {
-        $normalizedFallback = LogLevel::normalize($fallback, LogLevel::Error->value);
-
-        return LogLevel::normalize($level, $normalizedFallback);
+        static::$drivers[strtolower($name)] = $driverClass;
     }
 }

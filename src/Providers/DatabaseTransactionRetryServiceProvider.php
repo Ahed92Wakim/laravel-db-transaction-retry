@@ -48,7 +48,7 @@ class DatabaseTransactionRetryServiceProvider extends ServiceProvider
 
     protected function registerRoutes(): void
     {
-        if ($this->app->routesAreCached()) {
+        if (method_exists($this->app, 'routesAreCached') && $this->app->routesAreCached()) {
             return;
         }
 

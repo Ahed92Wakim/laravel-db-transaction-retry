@@ -16,7 +16,7 @@ class QueryExceptionLogger
             return;
         }
 
-        if (static::$isReporting) {
+        if (self::$isReporting) {
             return;
         }
 
@@ -24,14 +24,14 @@ class QueryExceptionLogger
             return;
         }
 
-        static::$isReporting = true;
+        self::$isReporting = true;
 
         try {
             static::persist($exception);
         } catch (Throwable) {
             // Never allow logging failures to interfere with exception handling.
         } finally {
-            static::$isReporting = false;
+            self::$isReporting = false;
         }
     }
 

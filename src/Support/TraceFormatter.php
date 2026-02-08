@@ -15,7 +15,7 @@ class TraceFormatter
                 ->map(static fn (array $frame) => [
                     'file'     => $frame['file']     ?? null,
                     'line'     => $frame['line']     ?? null,
-                    'function' => $frame['function'] ?? null,
+                    'function' => $frame['function'],
                     'class'    => $frame['class']    ?? null,
                     'type'     => $frame['type']     ?? null,
                 ])->all();

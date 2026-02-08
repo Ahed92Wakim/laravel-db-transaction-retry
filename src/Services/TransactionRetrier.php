@@ -37,7 +37,7 @@ class TransactionRetrier
     ): mixed {
         $config   = function_exists('config') ? config('database-transaction-retry', []) : [];
         $config   = is_array($config) ? $config : [];
-        $trxLabel = $trxLabel ?? '';
+        $trxLabel = $trxLabel ?: '';
 
         if (! RetryToggle::isEnabled($config)) {
             static::exposeTransactionLabel($trxLabel);
@@ -68,7 +68,17 @@ class TransactionRetrier
                 // Expose the transaction label if the app wants to read it during the callback.
                 static::exposeTransactionLabel($trxLabel);
 
-                return DB::transaction($callback);
+                $result = DB::transaction($callback);
+
+                static::logOutcome(
+                    $logEntries,
+                    $logFileName,
+                    null,
+                    false,
+                    false
+                );
+
+                return $result;
             } catch (Throwable $exception) {
                 $exceptionCaught  = true;
                 $shouldRetryError = static::shouldRetry($exception);
@@ -83,13 +93,21 @@ class TransactionRetrier
                     if ($attempt >= $maxRetries) {
                         $throwable = $exception;
                     } else {
+                        static::logOutcome(
+                            $logEntries,
+                            $logFileName,
+                            null,
+                            true,
+                            true
+                        );
+
                         static::pause(static::nextBackoffInterval($retryDelay, $attempt));
                         continue;
                     }
                 } else {
                     $throwable = $exception;
                 }
-            } finally {
+
                 static::logOutcome(
                     $logEntries,
                     $logFileName,
@@ -98,9 +116,7 @@ class TransactionRetrier
                     $shouldRetryError
                 );
 
-                if (! is_null($throwable)) {
-                    throw $throwable;
-                }
+                throw $throwable;
             }
         }
 
@@ -272,6 +288,11 @@ class TransactionRetrier
     }
 
     /**
+     * Calculate the next backoff interval with jitter and a safety cap.
+     *
+     * @param int $baseDelay
+     * @param int $attempt
+     * @return int
      * @throws RandomException
      */
     protected static function nextBackoffInterval(int $baseDelay, int $attempt): int
@@ -281,7 +302,11 @@ class TransactionRetrier
         $min    = max(1, $delay - $jitter);
         $max    = $delay + $jitter;
 
-        return random_int($min, $max);
+        $interval = random_int($min, $max);
+
+        // Safety cap: don't allow a single retry delay to exceed 60 seconds
+        // to stay within reasonable PHP execution limits.
+        return min(60, $interval);
     }
 
     protected static function logOutcome(
@@ -350,6 +375,7 @@ class TransactionRetrier
         $overriddenSleep = 'DatabaseTransactions\\RetryHelper\\sleep';
 
         if (function_exists($overriddenSleep)) {
+            // @phpstan-ignore-next-line
             $overriddenSleep($seconds);
 
             return;

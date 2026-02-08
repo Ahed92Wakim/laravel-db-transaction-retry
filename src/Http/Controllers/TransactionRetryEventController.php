@@ -47,8 +47,8 @@ class TransactionRetryEventController
 
         $query->orderByDesc('occurred_at')->orderByDesc('id');
 
-        $perPage = min(max((int)$request->query('per_page', 50), 1), 200);
-        $page    = max((int)$request->query('page', 1), 1);
+        $perPage = min(max((int)$request->query('per_page', '50'), 1), 200);
+        $page    = max((int)$request->query('page', '1'), 1);
 
         $paginator = $query->paginate($perPage, ['*'], 'page', $page);
 
@@ -189,10 +189,10 @@ class TransactionRetryEventController
         [$start, $end, $window] = $this->resolveRange($request, '24h');
         $perPageInput           = $request->query('per_page');
         if ($perPageInput === null) {
-            $perPageInput = $request->query('limit', 10);
+            $perPageInput = $request->query('limit', '10');
         }
         $perPage = max((int)$perPageInput, 1);
-        $page    = max((int)$request->query('page', 1), 1);
+        $page    = max((int)$request->query('page', '1'), 1);
 
         $attemptStatus = RetryStatus::Attempt->value;
         $successStatus = RetryStatus::Success->value;
@@ -246,11 +246,11 @@ class TransactionRetryEventController
         [$start, $end, $window] = $this->resolveRange($request, '24h');
         $perPageInput           = $request->query('per_page');
         if ($perPageInput === null) {
-            $perPageInput = $request->query('limit', 10);
+            $perPageInput = $request->query('limit', '10');
         }
         //        $perPage = min(max((int)$perPageInput, 1), 50);
-        $perPage = $perPageInput;
-        $page    = max((int)$request->query('page', 1), 1);
+        $perPage = (int)$perPageInput;
+        $page    = max((int)$request->query('page', '1'), 1);
 
         $baseQuery = $connection->table($logTable)
             ->whereNotNull('completed_at')
@@ -329,10 +329,10 @@ class TransactionRetryEventController
         [$start, $end, $window] = $this->resolveRange($request, '24h');
         $perPageInput           = $request->query('per_page');
         if ($perPageInput === null) {
-            $perPageInput = $request->query('limit', 10);
+            $perPageInput = $request->query('limit', '10');
         }
         $perPage           = max((int)$perPageInput, 1);
-        $page              = max((int)$request->query('page', 1), 1);
+        $page              = max((int)$request->query('page', '1'), 1);
         $driver            = $connection->getDriverName();
         $bucket            = $this->bucketForWindow($window, $start, $end);
         $bucketExpression  = $this->bucketExpression($bucket, $driver);
@@ -430,8 +430,8 @@ class TransactionRetryEventController
             $cursor = $this->advanceCursor($cursor, $bucket);
         }
 
-        $totalOccurrences = (int)($totals?->occurrences ?? 0);
-        $lastSeen         = $totals?->last_seen ?? null;
+        $totalOccurrences = (int)($totals->occurrences ?? 0);
+        $lastSeen         = $totals->last_seen ?? null;
 
         return response()->json([
             'data' => $rows,
@@ -462,10 +462,10 @@ class TransactionRetryEventController
         [$start, $end, $window] = $this->resolveRange($request, '24h');
         $perPageInput           = $request->query('per_page');
         if ($perPageInput === null) {
-            $perPageInput = $request->query('limit', 10);
+            $perPageInput = $request->query('limit', '10');
         }
         $perPage = max((int)$perPageInput, 1);
-        $page    = max((int)$request->query('page', 1), 1);
+        $page    = max((int)$request->query('page', '1'), 1);
 
         $bucket           = $this->bucketForWindow($window, $start, $end);
         $driver           = $connection->getDriverName();
@@ -1099,19 +1099,5 @@ class TransactionRetryEventController
         return is_string($connectionName) && $connectionName !== ''
             ? DB::connection($connectionName)
             : DB::connection();
-    }
-
-    private function percentile(array $values, float $percent): int
-    {
-        if ($values === []) {
-            return 0;
-        }
-
-        sort($values, SORT_NUMERIC);
-        $count = count($values);
-        $index = (int) ceil($percent * $count) - 1;
-        $index = max(0, min($count - 1, $index));
-
-        return (int) $values[$index];
     }
 }
