@@ -22,15 +22,10 @@ class TransactionRetryLogWriter
 
     /**
      * Write the log entry using the configured driver.
-     *
-     * @param array $payload
-     * @param string $logFileName
-     * @param string $level
-     * @return void
      */
     public static function write(array $payload, string $logFileName, string $level = 'error'): void
     {
-        $driverName = static::loggingDriver();
+        $driverName  = static::loggingDriver();
         $driverClass = static::$drivers[$driverName] ?? FileLogDriver::class;
 
         /** @var LogDriverInterface $driver */
@@ -41,8 +36,6 @@ class TransactionRetryLogWriter
 
     /**
      * Get the configured logging driver name.
-     *
-     * @return string
      */
     protected static function loggingDriver(): string
     {
@@ -63,9 +56,7 @@ class TransactionRetryLogWriter
     /**
      * Register a custom log driver.
      *
-     * @param string $name
      * @param class-string<LogDriverInterface> $driverClass
-     * @return void
      */
     public static function extend(string $name, string $driverClass): void
     {

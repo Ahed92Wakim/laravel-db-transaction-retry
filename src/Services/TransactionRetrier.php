@@ -290,9 +290,6 @@ class TransactionRetrier
     /**
      * Calculate the next backoff interval with jitter and a safety cap.
      *
-     * @param int $baseDelay
-     * @param int $attempt
-     * @return int
      * @throws RandomException
      */
     protected static function nextBackoffInterval(int $baseDelay, int $attempt): int
