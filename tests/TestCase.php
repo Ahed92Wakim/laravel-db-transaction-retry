@@ -132,4 +132,15 @@ final class TestApplication extends Container
     {
         $this->environment = $callback();
     }
+
+    public function register($provider): void
+    {
+        if (is_string($provider)) {
+            $provider = new $provider($this);
+        }
+
+        if (method_exists($provider, 'register')) {
+            $provider->register();
+        }
+    }
 }
