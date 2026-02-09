@@ -151,24 +151,13 @@ return [
     | Retryable Exceptions
     |--------------------------------------------------------------------------
     |
-    | Configure the database errors that should trigger a retry. SQLSTATE codes
-    | and driver error codes are checked for `QueryException` instances. You may
-    | also list additional exception classes to retry on by name.
+    | Configure the database errors that should trigger a retry.
     |
     */
 
-    'retryable_exceptions' => [
-        'sql_states' => [
-            '40001', // Serialization failure
-        ],
+    'retry_on_deadlock' => env('DB_TRANSACTION_RETRY_ON_DEADLOCK', true),
 
-        'driver_error_codes' => [
-            1213, // MySQL deadlock
-            // 1205, // MySQL lock wait timeout
-        ],
-
-        'classes' => [],
-    ],
+    'retry_on_lock_wait_timeout' => env('DB_TRANSACTION_RETRY_ON_LOCK_WAIT_TIMEOUT', false),
 
     /*
     |--------------------------------------------------------------------------

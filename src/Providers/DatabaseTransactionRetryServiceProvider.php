@@ -28,6 +28,8 @@ class DatabaseTransactionRetryServiceProvider extends ServiceProvider
             __DIR__ . '/../../config/database-transaction-retry.php',
             'database-transaction-retry'
         );
+
+        $this->app->register(DbMacroServiceProvider::class);
     }
 
     /**
