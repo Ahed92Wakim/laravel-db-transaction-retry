@@ -13,11 +13,11 @@ class TraceFormatter
         try {
             return collect(debug_backtrace($option, $limit))
                 ->map(static fn (array $frame) => [
-                    'file'     => $frame['file']     ?? null,
-                    'line'     => $frame['line']     ?? null,
-                    'function' => $frame['function'] ?? null,
-                    'class'    => $frame['class']    ?? null,
-                    'type'     => $frame['type']     ?? null,
+                    'file'     => $frame['file'] ?? null,
+                    'line'     => $frame['line'] ?? null,
+                    'function' => $frame['function'],
+                    'class'    => $frame['class'] ?? null,
+                    'type'     => $frame['type']  ?? null,
                 ])->all();
         } catch (Throwable) {
             return [];

@@ -1,9 +1,8 @@
-
 vendor/
-
 .idea/
 .vscode/
 .DS_Store
 resources/
-
 storage/runtime/retry-disabled.marker
+.php-cs-fixer.cache
+.php-cs-fixer.cache.*
