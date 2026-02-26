@@ -6,16 +6,20 @@ use DatabaseTransactions\RetryHelper\Console\InstallCommand;
 use DatabaseTransactions\RetryHelper\Console\RollPartitionsCommand;
 use DatabaseTransactions\RetryHelper\Console\StartRetryCommand;
 use DatabaseTransactions\RetryHelper\Console\StopRetryCommand;
+use DatabaseTransactions\RetryHelper\Database\RetryableMariaDbConnection;
+use DatabaseTransactions\RetryHelper\Database\RetryableMySqlConnection;
 use DatabaseTransactions\RetryHelper\Support\DashboardAssets;
 use DatabaseTransactions\RetryHelper\Support\QueryExceptionLogger;
 use DatabaseTransactions\RetryHelper\Support\SlowTransactionMonitor;
 use DatabaseTransactions\RetryHelper\Support\UninstallAction;
 use Illuminate\Contracts\Container\BindingResolutionException;
 use Illuminate\Contracts\Debug\ExceptionHandler;
+use Illuminate\Database\Connection;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Database\Events\TransactionBeginning;
 use Illuminate\Database\Events\TransactionCommitted;
 use Illuminate\Database\Events\TransactionRolledBack;
+use Illuminate\Database\MariaDbConnection;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Http\Events\RequestHandled;
 use Illuminate\Support\ServiceProvider;
@@ -29,7 +33,9 @@ class DatabaseTransactionRetryServiceProvider extends ServiceProvider
             'database-transaction-retry'
         );
 
-        $this->app->register(DbMacroServiceProvider::class);
+        if (method_exists($this->app, 'register')) {
+            $this->app->register(DbMacroServiceProvider::class);
+        }
     }
 
     /**
@@ -37,6 +43,7 @@ class DatabaseTransactionRetryServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        $this->registerGlobalHook();
         $this->registerRoutes();
         $this->registerSlowTransactionMonitor();
         $this->registerQueryExceptionLogger();
@@ -45,6 +52,24 @@ class DatabaseTransactionRetryServiceProvider extends ServiceProvider
             $this->registerComposerEvents();
             $this->registerPublishing();
             $this->registerCommands();
+        }
+    }
+
+    protected function registerGlobalHook(): void
+    {
+        $config = config('database-transaction-retry.global_hook', []);
+        if (! is_array($config) || empty($config['enabled'])) {
+            return;
+        }
+
+        Connection::resolverFor('mysql', static function ($pdo, $database, $prefix, $config) {
+            return new RetryableMySqlConnection($pdo, $database, $prefix, $config);
+        });
+
+        if (class_exists(MariaDbConnection::class)) {
+            Connection::resolverFor('mariadb', static function ($pdo, $database, $prefix, $config) {
+                return new RetryableMariaDbConnection($pdo, $database, $prefix, $config);
+            });
         }
     }
 

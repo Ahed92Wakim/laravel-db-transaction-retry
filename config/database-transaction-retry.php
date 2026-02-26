@@ -15,6 +15,27 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Global Hook
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, every DB::transaction() call on MySQL and MariaDB
+    | connections is automatically routed through the retry helper. This
+    | means all transactions — including those from third-party packages —
+    | will benefit from deadlock retry logic without any code changes.
+    |
+    | ⚠️ This is DISABLED by default. The manual DB::transactionWithRetry() / TransactionRetrier::runWithRetry()
+    | approach is safer because it gives you explicit control over which
+    | transactions are retried.
+    |
+    */
+
+    'global_hook' => [
+        'enabled' => env('DB_TRANSACTION_RETRY_GLOBAL_HOOK', false),
+    ],
+
+
+    /*
+    |--------------------------------------------------------------------------
     | Toggle State Path
     |--------------------------------------------------------------------------
     |

@@ -84,7 +84,30 @@ $report = DB::connection('analytics')->transactionWithRetry(
 
 The macro is registered automatically when the service provider boots, and sets the `tx.label` container binding the same way as the helper.
 
+### Global Hook (Automatic Retry)
+
+If you want **every** `DB::transaction()` call to automatically benefit from retry logic — without changing any application code — you can enable the global hook:
+
+```env
+DB_TRANSACTION_RETRY_GLOBAL_HOOK=true
+```
+
+Or set it in `config/database-transaction-retry.php`:
+
+```php
+'global_hook' => [
+    'enabled' => true,
+],
+```
+
+When enabled, the package registers custom MySQL and MariaDB connection classes that override `transaction()` to route through `TransactionRetrier::runWithRetry()`. This means all transactions — including those from third-party packages — will retry on configured deadlock errors.
+
+> ⚠️ **Use with caution.** The global hook affects every transaction in your application, including those from packages you don't control. The manual `DB::transactionWithRetry()` / `TransactionRetrier::runWithRetry()` approach is safer because it gives you explicit, per-call control. The global hook is best suited for applications that want blanket retry protection with minimal code changes.
+
+The hook is **disabled by default** and can be toggled at runtime through configuration.
+
 ### Parameters
+
 
 | Parameter     | Default                                   | Description                                                                                                         |
 | ------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
