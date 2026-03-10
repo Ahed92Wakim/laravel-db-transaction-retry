@@ -17,7 +17,7 @@ test('slow transaction monitor logs transaction and slow queries', function (): 
         'transaction_threshold_ms' => 0,
         'slow_query_threshold_ms'  => 0,
         'log_table'                => 'db_transaction_logs',
-        'query_table'              => 'db_transaction_queries',
+        'query_table'              => 'db_query_logs',
         'log_connection'           => null,
         'log_enabled'              => false,
     ]);
@@ -39,7 +39,7 @@ test('slow transaction monitor logs transaction and slow queries', function (): 
     ));
     $queryRows = array_values(array_filter(
         $database->insertedRows,
-        static fn (array $row): bool => $row['table'] === 'db_transaction_queries'
+        static fn (array $row): bool => $row['table'] === 'db_query_logs'
     ));
 
     expect($logRows)->toHaveCount(1);
@@ -52,7 +52,7 @@ test('slow transaction monitor logs transaction and slow queries', function (): 
     expect($logRow['slow_queries_count'])->toBe(1);
 
     $queryRow = $queryRows[0]['row'];
-    expect($queryRow['transaction_log_id'])->toBe($database->lastInsertId);
+    expect($queryRow['loggable_id'])->toBe($database->lastInsertId);
     expect($queryRow['execution_time_ms'])->toBe(13);
     expect($queryRow['query_order'])->toBe(1);
 });
@@ -67,7 +67,7 @@ test('slow transaction monitor updates http status after request handled', funct
         'transaction_threshold_ms' => 0,
         'slow_query_threshold_ms'  => 0,
         'log_table'                => 'db_transaction_logs',
-        'query_table'              => 'db_transaction_queries',
+        'query_table'              => 'db_query_logs',
         'log_connection'           => null,
         'log_enabled'              => false,
     ]);

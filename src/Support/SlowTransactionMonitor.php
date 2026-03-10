@@ -33,7 +33,7 @@ class SlowTransactionMonitor
         $this->transactionThresholdMs = max(0, (int) ($config['transaction_threshold_ms'] ?? 2000));
         $this->slowQueryThresholdMs   = max(0, (int) ($config['slow_query_threshold_ms'] ?? 1000));
         $this->logTable               = trim((string) ($config['log_table'] ?? 'db_transaction_logs'));
-        $this->queryTable             = trim((string) ($config['query_table'] ?? 'db_transaction_queries'));
+        $this->queryTable             = trim((string) ($config['query_table'] ?? 'db_query_logs'));
         $this->logConnection          = isset($config['log_connection']) && $config['log_connection'] !== ''
             ? (string) $config['log_connection']
             : null;
@@ -89,11 +89,15 @@ class SlowTransactionMonitor
         $root['query_count'] = (int) ($root['query_count'] ?? 0) + 1;
         $order               = $root['query_count'];
 
-        $timeMs = is_numeric($event->time) ? (int) round($event->time) : 0;
-        $sql    = $this->resolveRawSql($event);
+        $timeMs   = is_numeric($event->time) ? (int) round($event->time) : 0;
+        $rawSql   = $this->resolveRawSql($event);
+        $sqlQuery = $event->sql;
+        $bindings = $event->bindings ?? [];
 
         $entry = [
-            'sql'             => $sql,
+            'raw_sql'         => $rawSql,
+            'sql_query'       => $sqlQuery,
+            'bindings'        => $bindings,
             'time_ms'         => $timeMs,
             'order'           => $order,
             'connection_name' => $connection,
@@ -471,11 +475,14 @@ class SlowTransactionMonitor
         $rows = [];
         foreach ($slowQueries as $query) {
             $row = [
-                'transaction_log_id' => $logId,
-                'sql_query'          => (string) ($query['sql'] ?? ''),
-                'execution_time_ms'  => (int) ($query['time_ms'] ?? 0),
-                'connection_name'    => (string) ($query['connection_name'] ?? ''),
-                'query_order'        => (int) ($query['order'] ?? 0),
+                'loggable_id'       => $logId,
+                'loggable_type'     => $this->logTable,
+                'raw_sql'           => (string) ($query['raw_sql'] ?? $query['sql'] ?? ''),
+                'sql_query'         => (string) ($query['sql_query'] ?? $query['sql'] ?? ''),
+                'bindings'          => $this->encodeJson($query['bindings'] ?? null),
+                'execution_time_ms' => (int) ($query['time_ms'] ?? 0),
+                'connection_name'   => (string) ($query['connection_name'] ?? ''),
+                'query_order'       => (int) ($query['order'] ?? 0),
             ];
 
             if ($includeCompletedAt) {
@@ -517,6 +524,17 @@ class SlowTransactionMonitor
         }
 
         return $this->queryTableHasLogCompletedAt;
+    }
+
+    private function encodeJson(mixed $value): ?string
+    {
+        if (is_null($value)) {
+            return null;
+        }
+
+        $encoded = json_encode($value);
+
+        return $encoded === false ? null : $encoded;
     }
 
     private function sortedSlowQueries(array $slowQueries): array
