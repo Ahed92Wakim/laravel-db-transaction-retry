@@ -9,7 +9,7 @@ return new class () extends Migration {
     public function up(): void
     {
         $logTable   = $this->resolveTableName('database-transaction-retry.slow_transactions.log_table', 'db_transaction_logs');
-        $queryTable = $this->resolveTableName('database-transaction-retry.slow_transactions.query_table', 'db_transaction_queries');
+        $queryTable = $this->resolveTableName('database-transaction-retry.slow_transactions.query_table', 'db_query_logs');
         $isMysql    = Schema::getConnection()->getDriverName() === 'mysql';
 
         Schema::create($logTable, function (Blueprint $table) use ($isMysql): void {
@@ -48,22 +48,16 @@ return new class () extends Migration {
             }
         });
 
-        Schema::create($queryTable, function (Blueprint $table) use ($logTable, $isMysql): void {
+        Schema::create($queryTable, function (Blueprint $table) use ($isMysql): void {
             $table->bigIncrements('id');
-            $table->unsignedBigInteger('transaction_log_id');
-            $table->text('sql_query');
+            $table->morphs('loggable');
+            $table->longText('raw_sql')->nullable();
+            $table->longText('sql_query')->nullable();
+            $table->json('bindings')->nullable();
             $table->unsignedInteger('execution_time_ms');
             $table->string('connection_name', 50);
             $table->unsignedTinyInteger('query_order');
 
-            if (! $isMysql) {
-                $table->foreign('transaction_log_id')
-                    ->references('id')
-                    ->on($logTable)
-                    ->onDelete('cascade');
-            }
-
-            $table->index('transaction_log_id', 'idx_transaction_log_id');
             $table->index('execution_time_ms', 'idx_execution_time_ms');
         });
 
@@ -75,7 +69,7 @@ return new class () extends Migration {
     public function down(): void
     {
         $logTable   = $this->resolveTableName('database-transaction-retry.slow_transactions.log_table', 'db_transaction_logs');
-        $queryTable = $this->resolveTableName('database-transaction-retry.slow_transactions.query_table', 'db_transaction_queries');
+        $queryTable = $this->resolveTableName('database-transaction-retry.slow_transactions.query_table', 'db_query_logs');
 
         Schema::dropIfExists($queryTable);
         Schema::dropIfExists($logTable);

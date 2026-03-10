@@ -35,6 +35,8 @@ return new class () extends Migration {
             $table->unsignedInteger('driver_code')->nullable()->index();
             $table->string('connection', 100)->nullable();
             $table->longText('raw_sql')->nullable();
+            $table->longText('sql_query')->nullable();
+            $table->json('bindings')->nullable();
             $table->json('error_info')->nullable();
             $table->string('method', 10)->nullable()->index();
             $table->string('route_name', 255)->nullable()->index();

@@ -35,6 +35,8 @@ class DatabaseLogDriver implements LogDriverInterface
         $driverCode     = $context['driverCode'] ?? null;
         $connection     = $context['connection'] ?? null;
         $rawSql         = $context['rawSql']     ?? null;
+        $sqlQuery       = $context['sqlQuery']   ?? null;
+        $bindings       = $context['bindings']   ?? null;
         $errorInfo      = $context['errorInfo']  ?? null;
 
         $method        = $context['method']        ?? null;
@@ -59,7 +61,7 @@ class DatabaseLogDriver implements LogDriverInterface
         $occurredAt = function_exists('now') ? now() : date('Y-m-d H:i:s');
 
         $routeHash = $this->hashFromParts([$method, $routeName, $url]);
-        $queryHash = $this->hashFromParts([$rawSql]);
+        $queryHash = $this->hashFromParts([$rawSql ?? $sqlQuery]);
         $eventHash = $this->hashFromParts([
             $status,
             $normalizedLevel,
@@ -94,6 +96,8 @@ class DatabaseLogDriver implements LogDriverInterface
             'driverCode',
             'connection',
             'rawSql',
+            'sqlQuery',
+            'bindings',
             'errorInfo',
             'method',
             'routeName',
@@ -121,6 +125,8 @@ class DatabaseLogDriver implements LogDriverInterface
             'driver_code'     => is_null($driverCode) ? null : (int) $driverCode,
             'connection'      => is_null($connection) ? null : (string) $connection,
             'raw_sql'         => is_null($rawSql) ? null : (string) $rawSql,
+            'sql_query'       => is_null($sqlQuery) ? null : (string) $sqlQuery,
+            'bindings'        => $this->encodeJson(is_array($bindings) ? $bindings : null),
             'error_info'      => $this->encodeJson($errorInfo),
             'method'          => is_null($method) ? null : (string) $method,
             'route_name'      => is_null($routeName) ? null : (string) $routeName,
