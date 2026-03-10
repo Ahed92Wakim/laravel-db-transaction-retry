@@ -935,6 +935,63 @@ h3 {
   flex: 0 0 auto;
 }
 
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.status-pill--ok {
+  background: rgba(43, 165, 154, 0.12);
+  border-color: rgba(43, 165, 154, 0.32);
+  color: #18645d;
+}
+
+.status-pill--warn {
+  background: rgba(249, 115, 22, 0.14);
+  border-color: rgba(249, 115, 22, 0.35);
+  color: #8a4b0f;
+}
+
+.status-pill--error {
+  background: rgba(239, 68, 68, 0.16);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #8b1e1e;
+}
+
+.status-pill--muted {
+  color: var(--muted);
+}
+
+:root[data-theme="dark"] .status-pill {
+  background: rgba(15, 23, 42, 0.55);
+}
+
+:root[data-theme="dark"] .status-pill--ok {
+  background: rgba(71, 209, 197, 0.22);
+  border-color: rgba(71, 209, 197, 0.4);
+  color: #b7f3ec;
+}
+
+:root[data-theme="dark"] .status-pill--warn {
+  background: rgba(251, 146, 60, 0.2);
+  border-color: rgba(251, 146, 60, 0.4);
+  color: #fde3c5;
+}
+
+:root[data-theme="dark"] .status-pill--error {
+  background: rgba(248, 113, 113, 0.22);
+  border-color: rgba(248, 113, 113, 0.4);
+  color: #ffd2d2;
+}
+
 .route-table tbody tr:hover {
   background: rgba(255, 107, 45, 0.08);
 }

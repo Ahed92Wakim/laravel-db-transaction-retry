@@ -110,6 +110,24 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Request Query Logging
+    |--------------------------------------------------------------------------
+    |
+    | Log requests that execute at least one database query. Each request is
+    | persisted to the request log table, and every query is stored in the
+    | shared query log table via a morph relation.
+    |
+    */
+
+    'request_logging' => [
+        'enabled'        => env('DB_REQUEST_LOG_ENABLED', true),
+        'log_table'      => env('DB_REQUEST_LOG_TABLE', 'db_request_logs'),
+        'query_table'    => env('DB_REQUEST_LOG_QUERY_TABLE', 'db_query_logs'),
+        'log_connection' => env('DB_REQUEST_LOG_CONNECTION'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Dashboard
     |--------------------------------------------------------------------------
     |

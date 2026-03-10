@@ -8,8 +8,12 @@ use DatabaseTransactions\RetryHelper\Console\StartRetryCommand;
 use DatabaseTransactions\RetryHelper\Console\StopRetryCommand;
 use DatabaseTransactions\RetryHelper\Support\DashboardAssets;
 use DatabaseTransactions\RetryHelper\Support\QueryExceptionLogger;
+use DatabaseTransactions\RetryHelper\Support\RequestMonitor;
+use DatabaseTransactions\RetryHelper\Support\RetryToggle;
 use DatabaseTransactions\RetryHelper\Support\SlowTransactionMonitor;
 use DatabaseTransactions\RetryHelper\Support\UninstallAction;
+use Illuminate\Console\Events\CommandFinished;
+use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Contracts\Container\BindingResolutionException;
 use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Database\Events\QueryExecuted;
@@ -41,6 +45,7 @@ class DatabaseTransactionRetryServiceProvider extends ServiceProvider
     {
         $this->registerRoutes();
         $this->registerSlowTransactionMonitor();
+        $this->registerRequestMonitor();
         $this->registerQueryExceptionLogger();
 
         if ($this->app->runningInConsole()) {
@@ -108,6 +113,50 @@ class DatabaseTransactionRetryServiceProvider extends ServiceProvider
         }
     }
 
+    protected function registerRequestMonitor(): void
+    {
+        if (! function_exists('config')) {
+            return;
+        }
+
+        $config = config('database-transaction-retry.request_logging', []);
+        if (! is_array($config) || RetryToggle::isExplicitlyDisabledValue($config['enabled'] ?? true)) {
+            return;
+        }
+
+        if (! $this->app->bound('events')) {
+            return;
+        }
+
+        $this->app->singleton(RequestMonitor::class, static function () use ($config): RequestMonitor {
+            return new RequestMonitor($config);
+        });
+
+        $events = $this->app['events'];
+
+        $events->listen(QueryExecuted::class, function ($event): void {
+            $this->app->make(RequestMonitor::class)->handleQueryExecuted($event);
+        });
+
+        if (class_exists(RequestHandled::class)) {
+            $events->listen(RequestHandled::class, function ($event): void {
+                $this->app->make(RequestMonitor::class)->handleRequestHandled($event);
+            });
+        }
+
+        if (class_exists(CommandStarting::class)) {
+            $events->listen(CommandStarting::class, function ($event): void {
+                $this->app->make(RequestMonitor::class)->handleCommandStarting($event);
+            });
+        }
+
+        if (class_exists(CommandFinished::class)) {
+            $events->listen(CommandFinished::class, function ($event): void {
+                $this->app->make(RequestMonitor::class)->handleCommandFinished($event);
+            });
+        }
+    }
+
     /**
      * @throws BindingResolutionException
      */
@@ -145,6 +194,8 @@ class DatabaseTransactionRetryServiceProvider extends ServiceProvider
             => $this->app->databasePath('migrations/0001_01_01_000001_create_db_transaction_logs_tables.php'),
             __DIR__ . '/../../database/migrations/0001_01_01_000002_create_db_exceptions_table.php'
             => $this->app->databasePath('migrations/0001_01_01_000002_create_db_exceptions_table.php'),
+            __DIR__ . '/../../database/migrations/0001_01_01_000003_create_db_request_logs_table.php'
+            => $this->app->databasePath('migrations/0001_01_01_000003_create_db_request_logs_table.php'),
         ], 'database-transaction-retry-migrations');
 
         $providerPath = function_exists('app_path')

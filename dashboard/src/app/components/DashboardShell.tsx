@@ -21,6 +21,7 @@ const navItems: Array<{
   disabled?: boolean;
 }> = [
     { label: 'Transactions', href: '/transactions' },
+    { label: 'Requests', href: '/requests' },
     { label: 'Retry traffic', href: '/retry-traffic' },
     { label: 'DB exceptions', href: '/db-exceptions' },
   ];
@@ -149,6 +150,8 @@ export default function DashboardShell({
     switch (activeNavItem.href) {
       case '/transactions':
         return 'Transaction Logs';
+      case '/requests':
+        return 'Request Logs';
       case '/retry-traffic':
         return 'Retry Traffic Analysis';
       case '/db-exceptions':

@@ -26,6 +26,7 @@ Resilient database transactions for Laravel applications that need to gracefully
 - Exponential backoff with jitter between attempts to reduce stampedes under load.
 - Retry events persisted to `transaction_retry_events` with request metadata, SQL, bindings, connection information, and stack traces.
 - Captures exception classes and codes, making it easy to see exactly what triggered the retry.
+- Request-level query logging stored in `db_request_logs`, with each query stored in `db_query_logs`.
 - Optional transaction labels and log file names (when using the log driver) for easier traceability across microservices and jobs.
 - Laravel package auto-discovery; no manual service provider registration required.
 
@@ -117,6 +118,8 @@ You can also run `php artisan db-transaction-retry:install` to publish the confi
 - `retryable_exceptions.sql_states` lists SQLSTATE codes that should trigger a retry (defaults to `40001`).
 - `retryable_exceptions.driver_error_codes` lists driver-specific error codes (defaults to `1213` deadlocks and `1205` lock wait timeouts). Including `1205` not only enables retries but also activates the optional session lock wait timeout override when configured.
 - `retryable_exceptions.classes` lets you specify fully-qualified exception class names that should always be retried.
+- `request_logging.enabled` enables or disables request logging (requests with at least one query).
+- `request_logging.log_table` and `request_logging.query_table` let you override the request and query log tables (defaults: `db_request_logs`, `db_query_logs`).
 - `dashboard.path` sets the UI path (defaults to `/transaction-retry`).
 - `dashboard.middleware` lets you attach middleware to the dashboard UI route (for example `web`, `auth`, or `can:viewTransactionRetryDashboard`).
 - `api.prefix` sets the JSON API prefix (defaults to `/api/transaction-retry`).
@@ -138,7 +141,9 @@ php artisan vendor:publish --tag=database-transaction-retry-migrations
 php artisan migrate
 ```
 
-If you switch to `logging.driver=log`, the migration is optional.
+If you switch to `logging.driver=log`, the retry event migration is optional.
+
+The migrations create the `transaction_retry_events`, `db_transaction_logs`, `db_query_logs`, `db_request_logs`, and `db_exceptions` tables by default.
 
 ## Dashboard (Next.js UI)
 
@@ -223,7 +228,7 @@ dashboard service provider from `bootstrap/providers.php` when available. It del
 
 - `config/database-transaction-retry.php`
 - `app/Providers/TransactionRetryDashboardServiceProvider.php`
-- Published migrations for the retry events and exception tables
+- Published migrations for the retry events, transaction logs, request logs, query logs, and exception tables
 - The published dashboard assets under `public/vendor/laravel-db-transaction-retry/{dashboard.path}`
 
 Database tables are not dropped automatically. If you want to remove them, drop the
@@ -238,6 +243,7 @@ use Illuminate\Support\Facades\Schedule;
 
 Schedule::command('db-transaction-retry:roll-partitions --hours=24 --table=transaction_retry_events')->hourly();
 Schedule::command('db-transaction-retry:roll-partitions --hours=24 --table=db_transaction_logs')->hourly();
+Schedule::command('db-transaction-retry:roll-partitions --hours=24 --table=db_request_logs')->hourly();
 Schedule::command('db-transaction-retry:roll-partitions --hours=24 --table=db_exceptions')->hourly();
 ```
 

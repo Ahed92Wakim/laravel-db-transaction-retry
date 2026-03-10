@@ -8,6 +8,9 @@ The format is based on Keep a Changelog, and this project aims to follow Semanti
 
 ### Added
 - Added `CHANGELOG.md` to track notable changes over time.
+- Added request-level query logging to `db_request_logs`, with per-query entries stored in `db_query_logs`.
+- Added dashboard requests view with HTTP and command tabs powered by the new request logs.
+- Added hourly MySQL partitions for `db_request_logs`.
 - Added pagination support (`page`/`per_page`) for the `metrics/routes-volume` endpoint (with total count metadata).
 - Added pagination support (`page`/`per_page`) for the `metrics/routes` endpoint (with total count metadata).
 - Added Pest coverage for the install command, partition rolling command, slow transaction monitor logging flow, and dashboard authorization.
@@ -20,3 +23,4 @@ The format is based on Keep a Changelog, and this project aims to follow Semanti
 - Fixed the transactions routes table pagination resetting back to page 1 when the page size changed.
 - Throws `AuthenticationException` instead of 403 when an unauthenticated user attempts to access the dashboard, allowing for proper redirection to login.
 - Safely handle null user in dashboard gate check.
+- Request logging now skips package dashboard/API requests and package artisan commands.

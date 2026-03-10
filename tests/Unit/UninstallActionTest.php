@@ -22,6 +22,7 @@ test('uninstall action removes published assets', function (): void {
     file_put_contents(database_path('migrations/0001_01_01_000000_create_transaction_retry_events_table.php'), 'migration');
     file_put_contents(database_path('migrations/0001_01_01_000001_create_db_transaction_logs_tables.php'), 'migration');
     file_put_contents(database_path('migrations/0001_01_01_000002_create_db_exceptions_table.php'), 'migration');
+    file_put_contents(database_path('migrations/0001_01_01_000003_create_db_request_logs_table.php'), 'migration');
     file_put_contents(
         base_path('bootstrap/providers.php'),
         <<<'PHP'
@@ -42,6 +43,7 @@ PHP
     expect(file_exists(database_path('migrations/0001_01_01_000000_create_transaction_retry_events_table.php')))->toBeFalse();
     expect(file_exists(database_path('migrations/0001_01_01_000001_create_db_transaction_logs_tables.php')))->toBeFalse();
     expect(file_exists(database_path('migrations/0001_01_01_000002_create_db_exceptions_table.php')))->toBeFalse();
+    expect(file_exists(database_path('migrations/0001_01_01_000003_create_db_request_logs_table.php')))->toBeFalse();
     expect(is_dir(DashboardAssets::publicPath()))->toBeFalse();
     expect(file_get_contents(base_path('bootstrap/providers.php')))->not->toContain('TransactionRetryDashboardServiceProvider');
 });

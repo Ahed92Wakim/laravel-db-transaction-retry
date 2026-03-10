@@ -39,7 +39,7 @@ class InstallCommand extends Command
         ]);
 
         $this->info('Database transaction retry assets published.');
-        $this->line('Run `php artisan migrate` to create the transaction_retry_events, db_transaction_logs, db_query_logs, and db_exceptions tables.');
+        $this->line('Run `php artisan migrate` to create the transaction_retry_events, db_transaction_logs, db_query_logs, db_request_logs, and db_exceptions tables.');
 
         return self::SUCCESS;
     }
