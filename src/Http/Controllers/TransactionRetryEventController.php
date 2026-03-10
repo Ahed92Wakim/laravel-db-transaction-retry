@@ -657,7 +657,7 @@ class TransactionRetryEventController
     public function queriesDuration(Request $request): JsonResponse
     {
         $logTable               = (string)config('database-transaction-retry.slow_transactions.log_table', 'db_transaction_logs');
-        $queryTable             = (string)config('database-transaction-retry.slow_transactions.query_table', 'db_transaction_queries');
+        $queryTable             = (string)config('database-transaction-retry.slow_transactions.query_table', 'db_query_logs');
         $connection             = $this->resolveSlowTransactionConnection();
         [$start, $end, $window] = $this->resolveRange($request, '24h');
         $bucket                 = $this->bucketForQueryWindow($window, $start, $end);
@@ -668,7 +668,7 @@ class TransactionRetryEventController
         $labelFormat      = $this->labelFormat($bucket);
 
         $baseQuery = $connection->table("{$queryTable} as q")
-            ->join("{$logTable} as l", 'q.transaction_log_id', '=', 'l.id')
+            ->join("{$logTable} as l", 'q.loggable_id', '=', 'l.id')
             ->whereNotNull('l.completed_at')
             ->where('l.completed_at', '>=', $start)
             ->where('l.completed_at', '<=', $end);
@@ -748,7 +748,7 @@ class TransactionRetryEventController
     public function queries(Request $request): JsonResponse
     {
         $logTable               = (string)config('database-transaction-retry.slow_transactions.log_table', 'db_transaction_logs');
-        $queryTable             = (string)config('database-transaction-retry.slow_transactions.query_table', 'db_transaction_queries');
+        $queryTable             = (string)config('database-transaction-retry.slow_transactions.query_table', 'db_query_logs');
         $connection             = $this->resolveSlowTransactionConnection();
         [$start, $end, $window] = $this->resolveRange($request, '24h');
         $bucket                 = $this->bucketForQueryWindow($window, $start, $end);
@@ -759,7 +759,7 @@ class TransactionRetryEventController
         $labelFormat      = $this->labelFormat($bucket);
 
         $baseQuery = $connection->table("{$queryTable} as q")
-            ->join("{$logTable} as l", 'q.transaction_log_id', '=', 'l.id')
+            ->join("{$logTable} as l", 'q.loggable_id', '=', 'l.id')
             ->whereNotNull('l.completed_at')
             ->where('l.completed_at', '>=', $start)
             ->where('l.completed_at', '<=', $end);

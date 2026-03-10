@@ -29,7 +29,9 @@ class DatabaseTransactionRetryServiceProvider extends ServiceProvider
             'database-transaction-retry'
         );
 
-        $this->app->register(DbMacroServiceProvider::class);
+        if (method_exists($this->app, 'register')) {
+            $this->app->register(DbMacroServiceProvider::class);
+        }
     }
 
     /**
@@ -137,12 +139,12 @@ class DatabaseTransactionRetryServiceProvider extends ServiceProvider
         ], 'database-transaction-retry-config');
 
         $this->publishes([
-            __DIR__ . '/../../database/migrations/2025_01_17_000000_create_transaction_retry_events_table.php'
-            => $this->app->databasePath('migrations/2025_01_17_000000_create_transaction_retry_events_table.php'),
-            __DIR__ . '/../../database/migrations/2025_01_17_000001_create_db_transaction_logs_tables.php'
-            => $this->app->databasePath('migrations/2025_01_17_000001_create_db_transaction_logs_tables.php'),
-            __DIR__ . '/../../database/migrations/2025_01_17_000002_create_db_exceptions_table.php'
-            => $this->app->databasePath('migrations/2025_01_17_000002_create_db_exceptions_table.php'),
+            __DIR__ . '/../../database/migrations/0001_01_01_000000_create_transaction_retry_events_table.php'
+            => $this->app->databasePath('migrations/0001_01_01_000000_create_transaction_retry_events_table.php'),
+            __DIR__ . '/../../database/migrations/0001_01_01_000001_create_db_transaction_logs_tables.php'
+            => $this->app->databasePath('migrations/0001_01_01_000001_create_db_transaction_logs_tables.php'),
+            __DIR__ . '/../../database/migrations/0001_01_01_000002_create_db_exceptions_table.php'
+            => $this->app->databasePath('migrations/0001_01_01_000002_create_db_exceptions_table.php'),
         ], 'database-transaction-retry-migrations');
 
         $providerPath = function_exists('app_path')
