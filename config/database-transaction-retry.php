@@ -102,7 +102,7 @@ return [
         'transaction_threshold_ms' => (int) env('DB_SLOW_TRANSACTION_THRESHOLD_MS', 1),
         'slow_query_threshold_ms'  => (int) env('DB_SLOW_TRANSACTION_QUERY_THRESHOLD_MS', 1),
         'log_table'                => env('DB_SLOW_TRANSACTION_LOG_TABLE', 'db_transaction_logs'),
-        'query_table'              => env('DB_SLOW_TRANSACTION_QUERY_TABLE', 'db_transaction_queries'),
+        'query_table'              => env('DB_SLOW_TRANSACTION_QUERY_TABLE', 'db_query_logs'),
         'log_connection'           => env('DB_SLOW_TRANSACTION_LOG_CONNECTION'),
         'log_enabled'              => env('DB_SLOW_TRANSACTION_LOG_ENABLED', true),
         'log_channel'              => env('DB_SLOW_TRANSACTION_LOG_CHANNEL'),

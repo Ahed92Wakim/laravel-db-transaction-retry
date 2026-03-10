@@ -189,7 +189,7 @@ class TransactionRetrier
             }
 
             $context['rawSql']    = $rawSql;
-            $context['sql']       = $sql;
+            $context['sqlQuery']  = $sql;
             $context['bindings']  = BindingStringifier::forLogs($bindings);
             $context['errorInfo'] = $throwable->errorInfo;
             $context['sqlState']  = isset($throwable->errorInfo[0])
