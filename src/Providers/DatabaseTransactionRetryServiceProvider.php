@@ -8,20 +8,10 @@ use DatabaseTransactions\RetryHelper\Console\StartRetryCommand;
 use DatabaseTransactions\RetryHelper\Console\StopRetryCommand;
 use DatabaseTransactions\RetryHelper\Support\DashboardAssets;
 use DatabaseTransactions\RetryHelper\Support\QueryExceptionLogger;
-use DatabaseTransactions\RetryHelper\Support\RequestMonitor;
-use DatabaseTransactions\RetryHelper\Support\RetryToggle;
-use DatabaseTransactions\RetryHelper\Support\SlowTransactionMonitor;
 use DatabaseTransactions\RetryHelper\Support\UninstallAction;
-use Illuminate\Console\Events\CommandFinished;
-use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Contracts\Container\BindingResolutionException;
 use Illuminate\Contracts\Debug\ExceptionHandler;
-use Illuminate\Database\Events\QueryExecuted;
-use Illuminate\Database\Events\TransactionBeginning;
-use Illuminate\Database\Events\TransactionCommitted;
-use Illuminate\Database\Events\TransactionRolledBack;
 use Illuminate\Database\QueryException;
-use Illuminate\Foundation\Http\Events\RequestHandled;
 use Illuminate\Support\ServiceProvider;
 
 class DatabaseTransactionRetryServiceProvider extends ServiceProvider
@@ -35,6 +25,7 @@ class DatabaseTransactionRetryServiceProvider extends ServiceProvider
 
         if (method_exists($this->app, 'register')) {
             $this->app->register(DbMacroServiceProvider::class);
+            $this->app->register(EventServiceProvider::class);
         }
     }
 
@@ -44,8 +35,6 @@ class DatabaseTransactionRetryServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->registerRoutes();
-        $this->registerSlowTransactionMonitor();
-        $this->registerRequestMonitor();
         $this->registerQueryExceptionLogger();
 
         if ($this->app->runningInConsole()) {
@@ -66,94 +55,6 @@ class DatabaseTransactionRetryServiceProvider extends ServiceProvider
 
         if ($dashboardEnabled || $apiEnabled) {
             $this->loadRoutesFrom(__DIR__ . '/../../routes/web.php');
-        }
-    }
-
-    protected function registerSlowTransactionMonitor(): void
-    {
-        if (! function_exists('config')) {
-            return;
-        }
-
-        $config = config('database-transaction-retry.slow_transactions', []);
-        if (! is_array($config) || ! ($config['enabled'] ?? true)) {
-            return;
-        }
-
-        if (! $this->app->bound('events')) {
-            return;
-        }
-
-        $this->app->singleton(SlowTransactionMonitor::class, static function () use ($config): SlowTransactionMonitor {
-            return new SlowTransactionMonitor($config);
-        });
-
-        $events = $this->app['events'];
-
-        $events->listen(TransactionBeginning::class, function ($event): void {
-            $this->app->make(SlowTransactionMonitor::class)->handleTransactionBeginning($event);
-        });
-
-        $events->listen(TransactionCommitted::class, function ($event): void {
-            $this->app->make(SlowTransactionMonitor::class)->handleTransactionCommitted($event);
-        });
-
-        $events->listen(TransactionRolledBack::class, function ($event): void {
-            $this->app->make(SlowTransactionMonitor::class)->handleTransactionRolledBack($event);
-        });
-
-        $events->listen(QueryExecuted::class, function ($event): void {
-            $this->app->make(SlowTransactionMonitor::class)->handleQueryExecuted($event);
-        });
-
-        if (class_exists(RequestHandled::class)) {
-            $events->listen(RequestHandled::class, function ($event): void {
-                $this->app->make(SlowTransactionMonitor::class)->handleRequestHandled($event);
-            });
-        }
-    }
-
-    protected function registerRequestMonitor(): void
-    {
-        if (! function_exists('config')) {
-            return;
-        }
-
-        $config = config('database-transaction-retry.request_logging', []);
-        if (! is_array($config) || RetryToggle::isExplicitlyDisabledValue($config['enabled'] ?? true)) {
-            return;
-        }
-
-        if (! $this->app->bound('events')) {
-            return;
-        }
-
-        $this->app->singleton(RequestMonitor::class, static function () use ($config): RequestMonitor {
-            return new RequestMonitor($config);
-        });
-
-        $events = $this->app['events'];
-
-        $events->listen(QueryExecuted::class, function ($event): void {
-            $this->app->make(RequestMonitor::class)->handleQueryExecuted($event);
-        });
-
-        if (class_exists(RequestHandled::class)) {
-            $events->listen(RequestHandled::class, function ($event): void {
-                $this->app->make(RequestMonitor::class)->handleRequestHandled($event);
-            });
-        }
-
-        if (class_exists(CommandStarting::class)) {
-            $events->listen(CommandStarting::class, function ($event): void {
-                $this->app->make(RequestMonitor::class)->handleCommandStarting($event);
-            });
-        }
-
-        if (class_exists(CommandFinished::class)) {
-            $events->listen(CommandFinished::class, function ($event): void {
-                $this->app->make(RequestMonitor::class)->handleCommandFinished($event);
-            });
         }
     }
 

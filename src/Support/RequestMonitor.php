@@ -2,12 +2,11 @@
 
 namespace DatabaseTransactions\RetryHelper\Support;
 
-use DateTimeImmutable;
+use DatabaseTransactions\RetryHelper\Writers\RequestLogWriter;
 use Illuminate\Console\Events\CommandFinished;
 use Illuminate\Console\Events\CommandStarting;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Http\Events\RequestHandled;
-use Illuminate\Support\Facades\DB;
 use Throwable;
 
 class RequestMonitor
@@ -15,22 +14,24 @@ class RequestMonitor
     private bool $enabled;
     private string $logTable;
     private string $queryTable;
-    private ?string $logConnection;
     private ?array $context = null;
     private ?array $pendingCommand = null;
     private bool $isPersisting = false;
     /** @var list<string> */
     private array $ignoreTables = [];
+    private RequestLogWriter $writer;
 
     public function __construct(array $config)
     {
-        $this->enabled = ! RetryToggle::isExplicitlyDisabledValue($config['enabled'] ?? true);
+        $this->enabled  = ! RetryToggle::isExplicitlyDisabledValue($config['enabled'] ?? true);
         $this->logTable = trim((string) ($config['log_table'] ?? 'db_request_logs'));
         $this->queryTable = trim((string) ($config['query_table'] ?? 'db_query_logs'));
-        $this->logConnection = isset($config['log_connection']) && $config['log_connection'] !== ''
+        $logConnection = isset($config['log_connection']) && $config['log_connection'] !== ''
             ? (string) $config['log_connection']
             : null;
+        
         $this->ignoreTables = $this->resolveIgnoreTables();
+        $this->writer = new RequestLogWriter($this->logTable, $this->queryTable, $logConnection);
     }
 
     public function handleCommandStarting(CommandStarting $event): void
@@ -46,9 +47,9 @@ class RequestMonitor
         $startMicro = microtime(true);
 
         $this->pendingCommand = [
-            'command' => $event->command,
+            'command'         => $event->command,
             'start_microtime' => $startMicro,
-            'started_at' => $this->timestampFromMicrotime($startMicro),
+            'started_at'      => TimeHelper::timestampFromMicrotime($startMicro),
         ];
     }
 
@@ -96,11 +97,11 @@ class RequestMonitor
         $bindings = $event->bindings ?? [];
 
         $this->context['queries'][] = [
-            'raw_sql' => $rawSql,
-            'sql_query' => $sqlQuery,
-            'bindings' => $bindings,
-            'time_ms' => $timeMs,
-            'order' => $queryCount,
+            'raw_sql'         => $rawSql,
+            'sql_query'       => $sqlQuery,
+            'bindings'        => $bindings,
+            'time_ms'         => $timeMs,
+            'order'           => $queryCount,
             'connection_name' => $event->connectionName ?? 'default',
         ];
     }
@@ -118,7 +119,7 @@ class RequestMonitor
         $status = null;
         try {
             $response = $event->response ?? null;
-            $status = $response && method_exists($response, 'getStatusCode')
+            $status   = $response && method_exists($response, 'getStatusCode')
                 ? $response->getStatusCode()
                 : null;
         } catch (Throwable) {
@@ -144,19 +145,21 @@ class RequestMonitor
             : microtime(true);
         $startedAt = is_string($pendingCommand['started_at'] ?? null)
             ? $pendingCommand['started_at']
-            : $this->timestampFromMicrotime($startMicro);
+            : TimeHelper::timestampFromMicrotime($startMicro);
+
+        $requestContext = RequestContext::snapshot();
 
         return [
-            'type' => 'command',
-            'started_at' => $startedAt,
+            'type'            => 'command',
+            'started_at'      => $startedAt,
             'start_microtime' => $startMicro,
-            'query_count' => 0,
-            'queries' => [],
-            'route_name' => $pendingCommand['command'] ?? null,
-            'http_method' => 'CLI',
-            'url' => $pendingCommand['command'] ?? null,
-            'ip_address' => null,
-            'user_id' => $this->resolveUserId(),
+            'query_count'     => 0,
+            'queries'         => [],
+            'route_name'      => $pendingCommand['command'] ?? null,
+            'http_method'     => 'CLI',
+            'url'             => $pendingCommand['command'] ?? null,
+            'ip_address'      => null,
+            'user_id'         => $requestContext['user_id'] ?? null,
         ];
     }
 
@@ -180,37 +183,21 @@ class RequestMonitor
             return null;
         }
 
-        $startMicro = $this->resolveRequestStart($request);
-        $startedAt  = $this->timestampFromMicrotime($startMicro);
-        $routeName  = null;
-        $url        = null;
-
-        try {
-            $route = method_exists($request, 'route') ? $request->route() : null;
-            if (is_object($route) && method_exists($route, 'getName')) {
-                $routeName = $route->getName();
-            } elseif (is_string($route)) {
-                $routeName = $route;
-            }
-            if (is_object($route) && method_exists($route, 'uri')) {
-                $url = $route->uri();
-            }
-        } catch (Throwable) {
-            $routeName = null;
-            $url = null;
-        }
+        $startMicro     = $this->resolveRequestStart($request);
+        $startedAt      = TimeHelper::timestampFromMicrotime($startMicro);
+        $requestContext = RequestContext::snapshot();
 
         return [
-            'type' => 'http',
-            'started_at' => $startedAt,
+            'type'            => 'http',
+            'started_at'      => $startedAt,
             'start_microtime' => $startMicro,
-            'query_count' => 0,
-            'queries' => [],
-            'route_name' => $routeName,
-            'http_method' => method_exists($request, 'getMethod') ? $request->getMethod() : null,
-            'url' => $url,
-            'ip_address' => method_exists($request, 'ip') ? $request->ip() : null,
-            'user_id' => $this->resolveUserId(),
+            'query_count'     => 0,
+            'queries'         => [],
+            'route_name'      => $requestContext['route_name'],
+            'http_method'     => $requestContext['method'],
+            'url'             => $requestContext['url'],
+            'ip_address'      => $requestContext['ip_address'],
+            'user_id'         => $requestContext['user_id'],
         ];
     }
 
@@ -228,71 +215,29 @@ class RequestMonitor
             return;
         }
 
-        $completedAt = $this->nowTimestamp();
-        $elapsedMs = $this->calculateElapsedMs($context);
+        $completedAt = TimeHelper::nowTimestamp();
+        $elapsedMs   = TimeHelper::calculateElapsedMs($context);
 
         $row = [
-            'started_at' => $context['started_at'] ?? $completedAt,
-            'completed_at' => $completedAt,
-            'elapsed_ms' => $elapsedMs,
+            'started_at'          => $context['started_at'] ?? $completedAt,
+            'completed_at'        => $completedAt,
+            'elapsed_ms'          => $elapsedMs,
             'total_queries_count' => (int) ($context['query_count'] ?? count($queries)),
-            'user_id' => $context['user_id'] ?? null,
-            'route_name' => $context['route_name'] ?? null,
-            'http_method' => $context['http_method'] ?? null,
-            'url' => $context['url'] ?? null,
-            'ip_address' => $context['ip_address'] ?? null,
-            'http_status' => $httpStatus,
+            'user_id'             => $context['user_id'] ?? null,
+            'route_name'          => $context['route_name'] ?? null,
+            'http_method'         => $context['http_method'] ?? null,
+            'url'                 => $context['url'] ?? null,
+            'ip_address'          => $context['ip_address'] ?? null,
+            'http_status'         => $httpStatus,
         ];
 
         $this->isPersisting = true;
 
         try {
-            if (! class_exists(DB::class)) {
-                return;
-            }
-
-            $db = $this->logConnection ? DB::connection($this->logConnection) : DB::connection();
-
-            $logId = $db->table($this->logTable)->insertGetId($row);
-
-            if (! is_numeric($logId)) {
-                return;
-            }
-
-            $this->writeQueryLogs((int) $logId, $queries);
-        } catch (Throwable) {
-            // Never interrupt the application flow if logging fails.
+            $this->writer->writeRequestLogAndQueries($row, $queries);
         } finally {
             $this->isPersisting = false;
         }
-    }
-
-    private function writeQueryLogs(int $logId, array $queries): void
-    {
-        if ($this->queryTable === '') {
-            return;
-        }
-
-        $rows = [];
-        foreach ($queries as $query) {
-            $rows[] = [
-                'loggable_id' => $logId,
-                'loggable_type' => $this->logTable,
-                'raw_sql' => (string) ($query['raw_sql'] ?? $query['sql'] ?? ''),
-                'sql_query' => (string) ($query['sql_query'] ?? $query['sql'] ?? ''),
-                'bindings' => $this->encodeJson($query['bindings'] ?? null),
-                'execution_time_ms' => (int) ($query['time_ms'] ?? 0),
-                'connection_name' => (string) ($query['connection_name'] ?? ''),
-                'query_order' => (int) ($query['order'] ?? 0),
-            ];
-        }
-
-        if ($rows === []) {
-            return;
-        }
-
-        $db = $this->logConnection ? DB::connection($this->logConnection) : DB::connection();
-        $db->table($this->queryTable)->insert($rows);
     }
 
     private function resolveRawSql(QueryExecuted $event): string
@@ -434,66 +379,5 @@ class RequestMonitor
         }
 
         return str_starts_with($command, 'db-transaction-retry:');
-    }
-
-    private function calculateElapsedMs(array $context): int
-    {
-        $startMicro = (float) ($context['start_microtime'] ?? microtime(true));
-
-        return (int) round((microtime(true) - $startMicro) * 1000);
-    }
-
-    private function nowTimestamp(): string
-    {
-        if (function_exists('now')) {
-            return now()->format('Y-m-d H:i:s.v');
-        }
-
-        return (new DateTimeImmutable('now'))->format('Y-m-d H:i:s.v');
-    }
-
-    private function timestampFromMicrotime(float $microtime): string
-    {
-        $formatted = sprintf('%.6F', $microtime);
-        $date = DateTimeImmutable::createFromFormat('U.u', $formatted);
-
-        if ($date === false) {
-            return $this->nowTimestamp();
-        }
-
-        return $date->format('Y-m-d H:i:s.v');
-    }
-
-    private function resolveUserId(): ?int
-    {
-        if (! function_exists('auth')) {
-            return null;
-        }
-
-        try {
-            $guard = auth();
-            $user  = $guard->user();
-
-            if (! $user) {
-                return null;
-            }
-
-            $id = method_exists($user, 'getAuthIdentifier') ? $user->getAuthIdentifier() : ($user->id ?? null);
-
-            return is_numeric($id) ? (int) $id : null;
-        } catch (Throwable) {
-            return null;
-        }
-    }
-
-    private function encodeJson(mixed $value): ?string
-    {
-        if (is_null($value)) {
-            return null;
-        }
-
-        $encoded = json_encode($value);
-
-        return $encoded === false ? null : $encoded;
     }
 }

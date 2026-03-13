@@ -1000,6 +1000,10 @@ h3 {
   background: rgba(255, 107, 45, 0.12);
 }
 
+.route-row {
+  cursor: pointer;
+}
+
 .route-table__header--exceptions {
   align-items: flex-start;
   flex-wrap: wrap;
@@ -1183,6 +1187,70 @@ h3 {
   margin-top: 1.2rem;
   display: grid;
   gap: 1.4rem;
+}
+
+.route-detail-page {
+  margin-top: 1.2rem;
+  display: grid;
+  gap: 1.6rem;
+}
+
+.route-hero {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.route-hero__eyebrow {
+  margin: 0;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--muted);
+}
+
+.route-hero__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.route-hero__title {
+  margin: 0;
+  font-size: 1.6rem;
+  color: var(--card-ink);
+}
+
+.route-hero__subtitle {
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.route-hero__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.route-hero__meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.6);
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+:root[data-theme="dark"] .route-hero__meta-item {
+  background: rgba(15, 23, 42, 0.55);
 }
 
 .exception-hero {

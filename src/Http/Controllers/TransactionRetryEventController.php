@@ -886,16 +886,7 @@ class TransactionRetryEventController
 
         $type = strtolower((string)$request->query('type', 'http'));
         $this->applyRequestTypeFilter($query, $type);
-
-        $method = $request->query('method');
-        if (is_string($method) && $method !== '') {
-            $query->where('http_method', $method);
-        }
-
-        $routeName = $request->query('route_name');
-        if (is_string($routeName) && $routeName !== '') {
-            $query->where('route_name', $routeName);
-        }
+        $this->applyRequestRouteFilters($query, $request);
 
         $status = $request->query('status');
         if (is_numeric($status)) {
@@ -957,6 +948,7 @@ class TransactionRetryEventController
             ->where('completed_at', '>=', $start)
             ->where('completed_at', '<=', $end);
         $this->applyRequestTypeFilter($baseQuery, $type);
+        $this->applyRequestRouteFilters($baseQuery, $request);
 
         $rows = (clone $baseQuery)
             ->selectRaw("{$bucketExpression} as bucket")
@@ -1035,6 +1027,7 @@ class TransactionRetryEventController
             ->where('completed_at', '>=', $start)
             ->where('completed_at', '<=', $end);
         $this->applyRequestTypeFilter($baseQuery, $type);
+        $this->applyRequestRouteFilters($baseQuery, $request);
 
         $rows = (clone $baseQuery)
             ->selectRaw("{$bucketExpression} as bucket")
@@ -1459,6 +1452,25 @@ class TransactionRetryEventController
             $query->where(function ($builder): void {
                 $builder->whereNull('http_method')->orWhere('http_method', '!=', 'CLI');
             });
+        }
+    }
+
+    private function applyRequestRouteFilters($query, Request $request): void
+    {
+        $method = $request->query('method');
+        if (is_string($method) && $method !== '') {
+            $query->where('http_method', $method);
+        }
+
+        $routeName = $request->query('route_name');
+        if (is_string($routeName) && $routeName !== '') {
+            $query->where('route_name', $routeName);
+            return;
+        }
+
+        $url = $request->query('url');
+        if (is_string($url) && $url !== '') {
+            $query->where('url', $url);
         }
     }
 }

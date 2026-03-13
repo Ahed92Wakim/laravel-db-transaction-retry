@@ -13,6 +13,8 @@ The format is based on Keep a Changelog, and this project aims to follow Semanti
 - Added hourly MySQL partitions for `db_request_logs`.
 - Added pagination support (`page`/`per_page`) for the `metrics/routes-volume` endpoint (with total count metadata).
 - Added pagination support (`page`/`per_page`) for the `metrics/routes` endpoint (with total count metadata).
+- Added a route detail dashboard view and made route tables link to per-route insights.
+- Added optional `method`, `route_name`, and `url` filters for request metrics/duration/requests endpoints.
 - Added Pest coverage for the install command, partition rolling command, slow transaction monitor logging flow, and dashboard authorization.
 - Added `metrics/queries-volume` and `metrics/queries-duration` endpoints for chart-specific transaction metrics.
 

@@ -36,6 +36,7 @@ type DashboardShellProps = {
   timeRange: TimeRangeValue;
   onTimeRangeChange: (value: TimeRangeValue) => void;
   rangeLabel: string;
+  pageTitle?: string;
   children: ReactNode;
 };
 
@@ -43,6 +44,7 @@ export default function DashboardShell({
   timeRange,
   onTimeRangeChange,
   rangeLabel,
+  pageTitle,
   children,
 }: DashboardShellProps) {
   const pathname = usePathname();
@@ -144,7 +146,11 @@ export default function DashboardShell({
     });
   }, [pathname]);
 
-  const pageTitle = useMemo(() => {
+  const resolvedPageTitle = useMemo(() => {
+    if (pageTitle) {
+      return pageTitle;
+    }
+
     if (!activeNavItem) return 'Transaction Retry Dashboard';
 
     switch (activeNavItem.href) {
@@ -159,7 +165,7 @@ export default function DashboardShell({
       default:
         return activeNavItem.label;
     }
-  }, [activeNavItem]);
+  }, [activeNavItem, pageTitle]);
 
   return (
     <main className="dashboard-shell">
@@ -256,7 +262,7 @@ export default function DashboardShell({
           {/*<div className="dashboard-header__content">*/}
           <div className="dashboard-header__intro">
             <span className="eyebrow">
-              {pageTitle}
+              {resolvedPageTitle}
             </span>
             {/*<h1 className="dashboard-header__title">Transaction Retry Command Center</h1>*/}
             {/*<p className="dashboard-header__subtitle">*/}

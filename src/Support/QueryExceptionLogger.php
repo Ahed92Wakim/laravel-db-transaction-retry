@@ -2,8 +2,8 @@
 
 namespace DatabaseTransactions\RetryHelper\Support;
 
+use DatabaseTransactions\RetryHelper\Writers\QueryExceptionWriter;
 use Illuminate\Database\QueryException;
-use Illuminate\Support\Facades\DB;
 use Throwable;
 
 class QueryExceptionLogger
@@ -52,10 +52,10 @@ class QueryExceptionLogger
         $connectionName = $exception->getConnectionName();
         $rawSql         = static::resolveRawSql($exception, $connectionName, $sql, $bindings);
 
-        $request = static::requestSnapshot();
+        $request = RequestContext::snapshot();
         $trace   = TraceFormatter::snapshot();
 
-        $occurredAt = function_exists('now') ? now() : date('Y-m-d H:i:s');
+        $occurredAt = TimeHelper::nowTimestamp();
 
         $eventHash = static::hashFromParts([
             $exceptionClass,
@@ -79,9 +79,9 @@ class QueryExceptionLogger
             'connection'       => $connectionName,
             'sql'              => $sql,
             'raw_sql'          => $rawSql,
-            'bindings'         => static::encodeJson(BindingStringifier::forLogs($bindings)),
+            'bindings'         => SerializationHelper::encodeJson(BindingStringifier::forLogs($bindings)),
             'error_message'    => $exception->getMessage(),
-            'error_info'       => static::encodeJson($errorInfo),
+            'error_info'       => SerializationHelper::encodeJson($errorInfo),
             'method'           => $request['method'],
             'route_name'       => $request['route_name'],
             'url'              => $request['url'],
@@ -90,20 +90,15 @@ class QueryExceptionLogger
             'user_id'          => $request['user_id'],
             'auth_header_len'  => $request['auth_header_len'],
             'auth_header_hash' => $request['auth_header_hash'],
-            'trace'            => static::encodeJson($trace),
+            'trace'            => SerializationHelper::encodeJson($trace),
             'event_hash'       => $eventHash,
-            'context'          => static::encodeJson($context),
+            'context'          => SerializationHelper::encodeJson($context),
             'created_at'       => $occurredAt,
             'updated_at'       => $occurredAt,
         ];
 
-        if ($table === '') {
-            return;
-        }
-
-        $db = $logConnection ? DB::connection($logConnection) : DB::connection();
-
-        $db->table($table)->insert($row);
+        $writer = new QueryExceptionWriter($table, $logConnection);
+        $writer->writeExceptionLog($row);
     }
 
     protected static function resolveRawSql(
@@ -123,81 +118,12 @@ class QueryExceptionLogger
         }
 
         try {
-            $connection = DB::connection($connectionName);
+            $connection = \Illuminate\Support\Facades\DB::connection($connectionName);
 
             return $connection->getQueryGrammar()->substituteBindingsIntoRawSql($sql, $bindings);
         } catch (Throwable) {
             return $sql;
         }
-    }
-
-    protected static function requestSnapshot(): array
-    {
-        $data = [
-            'method'           => null,
-            'route_name'       => null,
-            'url'              => null,
-            'ip_address'       => null,
-            'user_id'          => null,
-            'user_type'        => null,
-            'auth_header_len'  => null,
-            'auth_header_hash' => null,
-        ];
-
-        if (! function_exists('request') || ! function_exists('app') || ! app()->bound('request')) {
-            return $data;
-        }
-
-        $request = request();
-
-        if (method_exists($request, 'getMethod')) {
-            $data['method'] = $request->getMethod();
-        }
-
-        if (method_exists($request, 'route')) {
-            $route = $request->route();
-
-            if (is_object($route) && method_exists($route, 'uri')) {
-                $data['url'] = $route->uri();
-            }
-        }
-
-        if (method_exists($request, 'route')) {
-            $route = $request->route();
-
-            if (is_object($route) && method_exists($route, 'getName')) {
-                $data['route_name'] = $route->getName();
-            } elseif (is_string($route)) {
-                $data['route_name'] = $route;
-            }
-        }
-
-        if (method_exists($request, 'ip')) {
-            $data['ip_address'] = $request->ip();
-        }
-
-        if (method_exists($request, 'header')) {
-            $auth = $request->header('authorization');
-
-            if (is_string($auth) && $auth !== '') {
-                $data['auth_header_len']  = strlen($auth);
-                $data['auth_header_hash'] = hash('sha256', $auth);
-            }
-        }
-
-        $user = method_exists($request, 'user') ? $request->user() : null;
-
-        if (is_object($user)) {
-            $data['user_type'] = get_class($user);
-
-            if (method_exists($user, 'getAuthIdentifier')) {
-                $data['user_id'] = (string) $user->getAuthIdentifier();
-            } elseif (isset($user->id) && (is_scalar($user->id) || (is_object($user->id) && method_exists($user->id, '__toString')))) {
-                $data['user_id'] = (string) $user->id;
-            }
-        }
-
-        return $data;
     }
 
     protected static function resolveConfig(): array
@@ -247,17 +173,6 @@ class QueryExceptionLogger
         } catch (Throwable) {
             return false;
         }
-    }
-
-    protected static function encodeJson(mixed $value): ?string
-    {
-        if (is_null($value)) {
-            return null;
-        }
-
-        $encoded = json_encode($value);
-
-        return $encoded === false ? null : $encoded;
     }
 
     protected static function hashFromParts(array $parts): ?string

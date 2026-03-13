@@ -152,6 +152,8 @@ The package ships a static Next.js dashboard that is published into your Laravel
 - UI: `/transaction-retry`
 - API: `/api/transaction-retry/events`
 
+Route tables in the dashboard link to a per-route detail view. The request metrics endpoints (`/metrics/requests`, `/metrics/requests-duration`, and `/requests`) accept optional `method`, `route_name`, and `url` filters to scope data to a single route.
+
 ### Securing the dashboard
 
 By default the dashboard uses the `AuthorizeTransactionRetryDashboard` middleware, which only allows access in

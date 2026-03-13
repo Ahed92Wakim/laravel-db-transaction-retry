@@ -6,6 +6,7 @@ use Closure;
 use DatabaseTransactions\RetryHelper\Enums\LogLevel;
 use DatabaseTransactions\RetryHelper\Enums\RetryStatus;
 use DatabaseTransactions\RetryHelper\Support\BindingStringifier;
+use DatabaseTransactions\RetryHelper\Support\RequestContext;
 use DatabaseTransactions\RetryHelper\Support\RetryToggle;
 use DatabaseTransactions\RetryHelper\Support\TraceFormatter;
 use DatabaseTransactions\RetryHelper\Support\TransactionRetryLogWriter;
@@ -201,67 +202,18 @@ class TransactionRetrier
         $context['trace'] = TraceFormatter::snapshot();
 
         try {
-            $context += static::requestSnapshot();
+            $requestData = RequestContext::snapshot();
+            $context['url']           = $requestData['url'];
+            $context['method']        = $requestData['method'];
+            $context['routeName']     = $requestData['route_name'];
+            $context['userId']        = $requestData['user_id'];
+            $context['userType']      = $requestData['user_type'];
+            $context['authHeaderLen'] = $requestData['auth_header_len'];
         } catch (Throwable) {
             // ignore
         }
 
         return $context;
-    }
-
-    protected static function requestSnapshot(): array
-    {
-        $data = [
-            'url'       => null,
-            'method'    => null,
-            'routeName' => null,
-            'token'     => null,
-            'userId'    => null,
-            'userType'  => null,
-        ];
-
-        if (! function_exists('request') || ! app()->bound('request')) {
-            return $data;
-        }
-
-        $request = request();
-
-        $data['method'] = method_exists($request, 'getMethod') ? $request->getMethod() : null;
-
-        $data['url'] = null;
-        if (method_exists($request, 'route')) {
-            $route = $request->route();
-            if (is_object($route) && method_exists($route, 'uri')) {
-                $data['url'] = $route->uri();
-            }
-        }
-
-        if (method_exists($request, 'route')) {
-            $route = $request->route();
-            if (is_object($route) && method_exists($route, 'getName')) {
-                $data['routeName'] = $route->getName();
-            } elseif (is_string($route)) {
-                $data['routeName'] = $route;
-            }
-        }
-
-        if (method_exists($request, 'header')) {
-            $auth                  = $request->header('authorization');
-            $data['authHeaderLen'] = $auth ? strlen($auth) : null;
-        }
-
-        $user = method_exists($request, 'user') ? $request->user() : null;
-        if (is_object($user)) {
-            $data['userType'] = get_class($user);
-
-            if (method_exists($user, 'getAuthIdentifier')) {
-                $data['userId'] = $user->getAuthIdentifier();
-            } elseif (isset($user->id)) {
-                $data['userId'] = $user->id;
-            }
-        }
-
-        return $data;
     }
 
     protected static function generateRetryGroupId(): string

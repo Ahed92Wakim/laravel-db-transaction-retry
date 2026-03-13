@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Area,
   CartesianGrid,
@@ -32,6 +33,7 @@ import {
 const routeMetricsPageSize = 10;
 
 export default function RetryTrafficPage() {
+  const router = useRouter();
   const [clientTimeZone, setClientTimeZone] = useState<string | null>(null);
   const [timeRange, setTimeRange] = useState<TimeRangeValue>('24h');
   const [attemptRecords, setAttemptRecords] = useState<number | null>(null);
@@ -447,6 +449,27 @@ export default function RetryTrafficPage() {
     setRouteMetricsPage(1);
   }, [timeRange]);
 
+  const buildRouteDetailHref = (row: RouteMetric): string | null => {
+    if (!row.route_name && !row.url) {
+      return null;
+    }
+
+    const params = new URLSearchParams();
+    if (row.method) {
+      params.set('method', row.method);
+    }
+    if (row.route_name) {
+      params.set('route_name', row.route_name);
+    }
+    if (row.url) {
+      params.set('url', row.url);
+    }
+    params.set('window', timeRange);
+    params.set('type', 'http');
+
+    return `/routes/detail?${params.toString()}`;
+  };
+
   return (
     <DashboardShell
       timeRange={timeRange}
@@ -567,6 +590,13 @@ export default function RetryTrafficPage() {
                   {routeMetricsPageRows.map((row) => (
                     <tr
                       key={`${row.route_hash ?? 'route'}-${row.method ?? 'method'}-${row.route_name ?? row.url ?? 'unknown'}`}
+                      className="route-row"
+                      onClick={() => {
+                        const href = buildRouteDetailHref(row);
+                        if (href) {
+                          router.push(href);
+                        }
+                      }}
                     >
                       <td>
                         <span

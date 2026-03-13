@@ -1,6 +1,7 @@
 'use client';
 
 import {useEffect, useMemo, useState} from 'react';
+import {useRouter} from 'next/navigation';
 import {
   Bar,
   BarChart,
@@ -77,6 +78,7 @@ const toOptionalNumber = (value: unknown): number | null => {
 };
 
 export default function RequestsPage() {
+  const router = useRouter();
   const [clientTimeZone, setClientTimeZone] = useState<string | null>(null);
   const [timeRange, setTimeRange] = useState<TimeRangeValue>('24h');
   const [activeTab, setActiveTab] = useState<RequestTab>('requests');
@@ -435,6 +437,27 @@ export default function RequestsPage() {
     setRouteMetricsPage((prev) => Math.min(prev, routeMetricsTotalPages));
   }, [routeMetricsTotalPages]);
 
+  const buildRouteDetailHref = (row: RequestRouteMetric): string | null => {
+    if (!row.route_name && !row.url) {
+      return null;
+    }
+
+    const params = new URLSearchParams();
+    if (row.method) {
+      params.set('method', row.method);
+    }
+    if (row.route_name) {
+      params.set('route_name', row.route_name);
+    }
+    if (row.url) {
+      params.set('url', row.url);
+    }
+    params.set('window', timeRange);
+    params.set('type', requestType);
+
+    return `/routes/detail?${params.toString()}`;
+  };
+
   return (
     <DashboardShell
       timeRange={timeRange}
@@ -636,6 +659,13 @@ export default function RequestsPage() {
                   {routePageRows.map((row) => (
                     <tr
                       key={`route-${row.method ?? 'method'}-${row.route_name ?? row.url ?? 'unknown'}`}
+                      className="route-row"
+                      onClick={() => {
+                        const href = buildRouteDetailHref(row);
+                        if (href) {
+                          router.push(href);
+                        }
+                      }}
                     >
                       <td>
                         <span

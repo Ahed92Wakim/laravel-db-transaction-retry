@@ -1,6 +1,7 @@
 'use client';
 
 import {useEffect, useMemo, useState} from 'react';
+import {useRouter} from 'next/navigation';
 import {
     Bar,
     BarChart,
@@ -37,6 +38,7 @@ const routeVolumePageSize = 10;
 
 export default function TransactionsPage() {
 
+    const router = useRouter();
     const [clientTimeZone, setClientTimeZone] = useState<string | null>(null);
     const [timeRange, setTimeRange] = useState<TimeRangeValue>('24h');
     const [routeVolumeMetrics, setRouteVolumeMetrics] = useState<RouteVolumeMetric[]>([]);
@@ -347,6 +349,27 @@ export default function TransactionsPage() {
         setRouteVolumePage((prev) => Math.min(prev, routeVolumeTotalPages));
     }, [routeVolumeTotalPages]);
 
+    const buildRouteDetailHref = (row: RouteVolumeMetric): string | null => {
+        if (!row.route_name && !row.url) {
+            return null;
+        }
+
+        const params = new URLSearchParams();
+        if (row.method) {
+            params.set('method', row.method);
+        }
+        if (row.route_name) {
+            params.set('route_name', row.route_name);
+        }
+        if (row.url) {
+            params.set('url', row.url);
+        }
+        params.set('window', timeRange);
+        params.set('type', 'http');
+
+        return `/routes/detail?${params.toString()}`;
+    };
+
     return (
         <DashboardShell
             timeRange={timeRange}
@@ -509,6 +532,13 @@ export default function TransactionsPage() {
                                 {routeVolumePageRows.map((row) => (
                                     <tr
                                         key={`volume-${row.method ?? 'method'}-${row.route_name ?? row.url ?? 'unknown'}`}
+                                        className="route-row"
+                                        onClick={() => {
+                                            const href = buildRouteDetailHref(row);
+                                            if (href) {
+                                                router.push(href);
+                                            }
+                                        }}
                                     >
                                         <td>
                         <span
