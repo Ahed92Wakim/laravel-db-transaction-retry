@@ -77,7 +77,7 @@ class QueryExceptionLogger
             'sql_state'        => strtoupper($sqlState),
             'driver_code'      => $driverCode,
             'connection'       => $connectionName,
-            'sql'              => $sql,
+            'sql_query'        => $sql,
             'raw_sql'          => $rawSql,
             'bindings'         => SerializationHelper::encodeJson(BindingStringifier::forLogs($bindings)),
             'error_message'    => $exception->getMessage(),

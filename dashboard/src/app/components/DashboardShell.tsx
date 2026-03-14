@@ -22,6 +22,7 @@ const navItems: Array<{
 }> = [
     { label: 'Transactions', href: '/transactions' },
     { label: 'Requests', href: '/requests' },
+    { label: 'Commands', href: '/commands' },
     { label: 'Retry traffic', href: '/retry-traffic' },
     { label: 'DB exceptions', href: '/db-exceptions' },
   ];
@@ -158,6 +159,8 @@ export default function DashboardShell({
         return 'Transaction Logs';
       case '/requests':
         return 'Request Logs';
+      case '/commands':
+        return 'Command Logs';
       case '/retry-traffic':
         return 'Retry Traffic Analysis';
       case '/db-exceptions':

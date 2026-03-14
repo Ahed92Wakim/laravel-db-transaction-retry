@@ -61,8 +61,6 @@ type RequestRouteMetric = {
   p95_ms: number;
 };
 
-type RequestTab = 'requests' | 'commands';
-
 type DurationSummary = {
   min_ms: number | null;
   max_ms: number | null;
@@ -81,7 +79,6 @@ export default function RequestsPage() {
   const router = useRouter();
   const [clientTimeZone, setClientTimeZone] = useState<string | null>(null);
   const [timeRange, setTimeRange] = useState<TimeRangeValue>('24h');
-  const [activeTab, setActiveTab] = useState<RequestTab>('requests');
   const [requestTraffic, setRequestTraffic] = useState<RequestTrafficPoint[]>([]);
   const [requestTrafficBucket, setRequestTrafficBucket] = useState<Bucket | null>(null);
   const [requestTrafficStatus, setRequestTrafficStatus] = useState<
@@ -121,8 +118,6 @@ export default function RequestsPage() {
   const rangeLabel = selectedRange.windowLabel;
   const rangeShortLabel = selectedRange.label;
 
-  const requestType = activeTab === 'commands' ? 'command' : 'http';
-
   useEffect(() => {
     if (typeof Intl === 'undefined') {
       setClientTimeZone('UTC');
@@ -135,7 +130,7 @@ export default function RequestsPage() {
 
   useEffect(() => {
     setRouteMetricsPage(1);
-  }, [timeRange, activeTab]);
+  }, [timeRange]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -144,7 +139,7 @@ export default function RequestsPage() {
     const load = async () => {
       try {
         const params = new URLSearchParams(rangeQuery);
-        params.set('type', requestType);
+        params.set('type', 'http');
 
         const response = await fetch(`${apiBase}/metrics/requests?${params.toString()}`, {
           signal: controller.signal,
@@ -191,7 +186,7 @@ export default function RequestsPage() {
     load();
 
     return () => controller.abort();
-  }, [rangeQuery, requestType, timeRange]);
+  }, [rangeQuery, timeRange]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -200,7 +195,7 @@ export default function RequestsPage() {
     const load = async () => {
       try {
         const params = new URLSearchParams(rangeQuery);
-        params.set('type', requestType);
+        params.set('type', 'http');
 
         const response = await fetch(
           `${apiBase}/metrics/requests-duration?${params.toString()}`,
@@ -260,7 +255,7 @@ export default function RequestsPage() {
     load();
 
     return () => controller.abort();
-  }, [rangeQuery, requestType, timeRange]);
+  }, [rangeQuery, timeRange]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -271,7 +266,7 @@ export default function RequestsPage() {
         const params = new URLSearchParams(rangeQuery);
         params.set('page', String(routeMetricsPage));
         params.set('per_page', String(routePageSize));
-        params.set('type', requestType);
+        params.set('type', 'http');
 
         const response = await fetch(
           `${apiBase}/metrics/requests-routes?${params.toString()}`,
@@ -329,7 +324,7 @@ export default function RequestsPage() {
     load();
 
     return () => controller.abort();
-  }, [rangeQuery, requestType, routeMetricsPage]);
+  }, [rangeQuery, routeMetricsPage]);
 
   const trafficDisplay = useMemo(
     () =>
@@ -428,7 +423,7 @@ export default function RequestsPage() {
       : routeMetricsStatus === 'error'
         ? 'Unable to load route metrics.'
         : noRoutesInWindow
-          ? `No ${activeTab === 'commands' ? 'commands' : 'routes'} recorded in this window.`
+          ? 'No routes recorded in this window.'
           : filteredRoutes.length === 0
             ? 'No routes match the current filters.'
             : null;
@@ -453,7 +448,7 @@ export default function RequestsPage() {
       params.set('url', row.url);
     }
     params.set('window', timeRange);
-    params.set('type', requestType);
+    params.set('type', 'http');
 
     return `/routes/detail?${params.toString()}`;
   };
@@ -470,7 +465,7 @@ export default function RequestsPage() {
             <div className="chart-summary">
               <div className="chart-summary__main">
                 <span className="chart-summary__label">
-                  {activeTab === 'commands' ? 'Commands' : 'Requests'}
+                  Requests
                 </span>
                 <span className="chart-summary__value">
                   {formatOptionalNumber(trafficSummary.total)}
@@ -601,35 +596,19 @@ export default function RequestsPage() {
         <div className="route-table__header route-table__header--exceptions">
           <div className="route-table__heading">
             <p className="route-table__title">
-              {activeTab === 'commands' ? 'Commands' : 'Routes'}
+              Routes
             </p>
             <span className="route-table__meta">
               {rangeShortLabel} window · {formatValue(routeMetricsTotal)}{' '}
-              {activeTab === 'commands' ? 'commands' : 'routes'} · page {currentRoutePage} of{' '}
+              routes · page {currentRoutePage} of{' '}
               {routeMetricsTotalPages}
             </span>
           </div>
           <div className="exceptions-toolbar">
-            <div className="exceptions-filters">
-              <button
-                type="button"
-                className={`exceptions-filter${activeTab === 'requests' ? ' exceptions-filter--active' : ''}`}
-                onClick={() => setActiveTab('requests')}
-              >
-                Requests
-              </button>
-              <button
-                type="button"
-                className={`exceptions-filter${activeTab === 'commands' ? ' exceptions-filter--active' : ''}`}
-                onClick={() => setActiveTab('commands')}
-              >
-                Commands
-              </button>
-            </div>
             <input
               className="exceptions-search"
               type="search"
-              placeholder={`Search ${activeTab === 'commands' ? 'commands' : 'routes'}...`}
+              placeholder="Search routes..."
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               aria-label="Search routes"

@@ -26,3 +26,4 @@ The format is based on Keep a Changelog, and this project aims to follow Semanti
 - Throws `AuthenticationException` instead of 403 when an unauthenticated user attempts to access the dashboard, allowing for proper redirection to login.
 - Safely handle null user in dashboard gate check.
 - Request logging now skips package dashboard/API requests and package artisan commands.
+- Fixed query exception persistence to write/read `db_exceptions.sql_query` consistently so exception rows are stored and displayed correctly.

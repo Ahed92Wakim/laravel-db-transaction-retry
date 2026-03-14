@@ -504,7 +504,7 @@ class TransactionRetryEventController
             ->selectRaw('ANY_VALUE(sql_state) as sql_state')
             ->selectRaw('ANY_VALUE(driver_code) as driver_code')
             ->selectRaw('ANY_VALUE(connection) as connection')
-            ->selectRaw('ANY_VALUE(db_exceptions.sql) as `sql`')
+            ->selectRaw('ANY_VALUE(sql_query) as `sql`')
             ->selectRaw('COUNT(*) as occurrences')
             ->selectRaw('MAX(occurred_at) as last_seen')
             ->first();
@@ -513,7 +513,6 @@ class TransactionRetryEventController
             ->select([
                 'id',
                 'occurred_at',
-                'sql',
                 'raw_sql',
                 'error_message',
                 'method',
@@ -526,6 +525,7 @@ class TransactionRetryEventController
                 'driver_code',
                 'event_hash',
             ])
+            ->selectRaw('sql_query as `sql`')
             ->orderByDesc('occurred_at')
             ->orderByDesc('id')
             ->paginate($perPage, ['*'], 'page', $page);
