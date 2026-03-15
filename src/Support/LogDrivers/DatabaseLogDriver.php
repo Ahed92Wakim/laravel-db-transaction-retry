@@ -2,15 +2,14 @@
 
 namespace DatabaseTransactions\RetryHelper\Support\LogDrivers;
 
-use DatabaseTransactions\RetryHelper\Contracts\LogDriverInterface;
 use DatabaseTransactions\RetryHelper\Enums\LogLevel;
 use DatabaseTransactions\RetryHelper\Enums\RetryStatus;
 use Illuminate\Support\Facades\DB;
 use Throwable;
 
-class DatabaseLogDriver implements LogDriverInterface
+class DatabaseLogDriver
 {
-    public function write(array $payload, string $logFileName, string $level): void
+    public function write(array $payload, string $level): void
     {
         if (! class_exists(DB::class)) {
             return;

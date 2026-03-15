@@ -46,21 +46,14 @@ return [
     | Logging
     |--------------------------------------------------------------------------
     |
-    | Control how retry attempts are recorded. Set `driver` to "database" to
-    | persist retry events to the transaction_retry_events table (publish and
-    | run the migration), or "log" to keep file/channel logging. Provide a
-    | `channel` to reuse any logging channel defined in your application, or
-    | supply a `config` array to build a dedicated logger on the fly.
+    | Control how retry attempts are recorded. Retry events are persisted to
+    | the transaction_retry_events table by default; publish and run the
+    | package migration to enable storage.
     |
     */
 
-    'log_file_name' => env('DB_TRANSACTION_RETRY_LOG_FILE', 'database/transaction-retries'),
-
     'logging' => [
-        'driver'  => env('DB_TRANSACTION_RETRY_LOG_DRIVER', 'database'),
-        'table'   => env('DB_TRANSACTION_RETRY_LOG_TABLE', 'transaction_retry_events'),
-        'channel' => env('DB_TRANSACTION_RETRY_LOG_CHANNEL'),
-        'config'  => [],
+        'table' => env('DB_TRANSACTION_RETRY_LOG_TABLE', 'transaction_retry_events'),
 
         'levels' => [
             'success' => env('DB_TRANSACTION_RETRY_LOG_SUCCESS_LEVEL', 'warning'),
@@ -93,7 +86,7 @@ return [
     |
     | Track slow database transactions and persist summary data for analysis.
     | Configure thresholds in milliseconds and the tables that store summaries
-    | and slow queries. Logging can also write to the default or named channel.
+    | and slow queries.
     |
     */
 
@@ -104,8 +97,6 @@ return [
         'log_table'                => env('DB_SLOW_TRANSACTION_LOG_TABLE', 'db_transaction_logs'),
         'query_table'              => env('DB_SLOW_TRANSACTION_QUERY_TABLE', 'db_query_logs'),
         'log_connection'           => env('DB_SLOW_TRANSACTION_LOG_CONNECTION'),
-        'log_enabled'              => env('DB_SLOW_TRANSACTION_LOG_ENABLED', true),
-        'log_channel'              => env('DB_SLOW_TRANSACTION_LOG_CHANNEL'),
     ],
 
     /*

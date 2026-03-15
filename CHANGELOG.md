@@ -18,6 +18,10 @@ The format is based on Keep a Changelog, and this project aims to follow Semanti
 - Added Pest coverage for the install command, partition rolling command, slow transaction monitor logging flow, and dashboard authorization.
 - Added `metrics/queries-volume` and `metrics/queries-duration` endpoints for chart-specific transaction metrics.
 
+### Removed
+- Removed file- and channel-based retry logging configuration so retry events are now persisted only to the database.
+- Removed slow transaction channel logging so slow transaction monitoring now writes only to the package tables.
+
 ### Fixed
 - Fixed metrics aggregation queries to group by route fields and avoid MySQL-only `ANY_VALUE` usage for broader database support.
 - Fixed `metrics/routes-volume` pagination to clamp `per_page` to a sane numeric range.

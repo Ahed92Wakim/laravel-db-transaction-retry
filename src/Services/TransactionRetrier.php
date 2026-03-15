@@ -24,7 +24,6 @@ class TransactionRetrier
      * @param Closure $callback The transaction logic to execute.
      * @param int|null $maxRetries Maximum number of retries. Falls back to configuration.
      * @param int|null $retryDelay Delay between retries in seconds (base for backoff). Falls back to configuration.
-     * @param string|null $logFileName The log file name. Falls back to configuration.
      * @param string $trxLabel The transaction label.
      * @throws RandomException
      * @throws Throwable
@@ -33,7 +32,6 @@ class TransactionRetrier
         Closure $callback,
         ?int $maxRetries = null,
         ?int $retryDelay = null,
-        ?string $logFileName = null,
         string $trxLabel = ''
     ): mixed {
         $config   = function_exists('config') ? config('database-transaction-retry', []) : [];
@@ -48,7 +46,6 @@ class TransactionRetrier
 
         $maxRetries  ??= (int) ($config['max_retries'] ?? 3);
         $retryDelay  ??= (int) ($config['retry_delay'] ?? 2);
-        $logFileName ??= (string) ($config['log_file_name'] ?? 'database/transaction-retries');
 
         $maxRetries = max(1, $maxRetries);
         $retryDelay = max(1, $retryDelay);
@@ -73,7 +70,6 @@ class TransactionRetrier
 
                 static::logOutcome(
                     $logEntries,
-                    $logFileName,
                     null,
                     false,
                     false
@@ -89,14 +85,13 @@ class TransactionRetrier
                     $entry        = static::makeRetryContext($exception, $attempt, $maxRetries, $trxLabel, $retryGroupId);
                     $logEntries[] = $entry;
 
-                    static::logAttempt($entry, $logFileName);
+                    static::logAttempt($entry);
 
                     if ($attempt >= $maxRetries) {
                         $throwable = $exception;
                     } else {
                         static::logOutcome(
                             $logEntries,
-                            $logFileName,
                             null,
                             true,
                             true
@@ -111,7 +106,6 @@ class TransactionRetrier
 
                 static::logOutcome(
                     $logEntries,
-                    $logFileName,
                     $throwable,
                     $exceptionCaught,
                     $shouldRetryError
@@ -246,7 +240,6 @@ class TransactionRetrier
 
     protected static function logOutcome(
         array $logEntries,
-        string $logFileName,
         ?Throwable $throwable,
         bool $exceptionCaught,
         bool $shouldRetryError
@@ -258,7 +251,7 @@ class TransactionRetrier
                 $entry                = $logEntries[count($logEntries) - 1];
                 $entry['retryStatus'] = RetryStatus::Success->value;
 
-                TransactionRetryLogWriter::write($entry, $logFileName, $levels['success']);
+                TransactionRetryLogWriter::write($entry, $levels['success']);
             }
 
             return;
@@ -268,41 +261,20 @@ class TransactionRetrier
             $entry                = $logEntries[count($logEntries) - 1];
             $entry['retryStatus'] = RetryStatus::Failure->value;
 
-            TransactionRetryLogWriter::write($entry, $logFileName, $levels['failure']);
+            TransactionRetryLogWriter::write($entry, $levels['failure']);
         }
 
         // Non-retryable errors rethrow outside this helper; only log when retries are exhausted.
     }
 
-    protected static function logAttempt(array $entry, string $logFileName): void
+    protected static function logAttempt(array $entry): void
     {
-        if (! static::isDatabaseLoggingEnabled()) {
-            return;
-        }
-
         $entry['retryStatus'] = RetryStatus::Attempt->value;
 
         TransactionRetryLogWriter::write(
             $entry,
-            $logFileName,
             static::configuredAttemptLogLevel()
         );
-    }
-
-    protected static function isDatabaseLoggingEnabled(): bool
-    {
-        if (! function_exists('config')) {
-            return false;
-        }
-
-        $logging = config('database-transaction-retry.logging', []);
-        if (! is_array($logging)) {
-            return true;
-        }
-
-        $driver = strtolower(trim((string) ($logging['driver'] ?? 'database')));
-
-        return $driver === '' || $driver === 'database' || $driver === 'db';
     }
 
     protected static function pause(int $seconds): void

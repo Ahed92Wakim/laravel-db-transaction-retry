@@ -8,7 +8,6 @@ use Illuminate\Database\Events\TransactionBeginning;
 use Illuminate\Database\Events\TransactionCommitted;
 use Illuminate\Database\Events\TransactionRolledBack;
 use Illuminate\Foundation\Http\Events\RequestHandled;
-use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class SlowTransactionMonitor
@@ -16,8 +15,6 @@ class SlowTransactionMonitor
     private array $transactionStacks = [];
     private int $transactionThresholdMs;
     private int $slowQueryThresholdMs;
-    private bool $logEnabled;
-    private ?string $logChannel;
     private ?int $lastResponseStatus = null;
     private array $pendingLogIds     = [];
     private SlowTransactionWriter $writer;
@@ -26,10 +23,6 @@ class SlowTransactionMonitor
     {
         $this->transactionThresholdMs = max(0, (int) ($config['transaction_threshold_ms'] ?? 2000));
         $this->slowQueryThresholdMs   = max(0, (int) ($config['slow_query_threshold_ms'] ?? 1000));
-        $this->logEnabled = (bool) ($config['log_enabled'] ?? true);
-        $this->logChannel = isset($config['log_channel']) && $config['log_channel'] !== ''
-            ? (string) $config['log_channel']
-            : null;
 
         $logTable      = trim((string) ($config['log_table'] ?? 'db_transaction_logs'));
         $queryTable    = trim((string) ($config['query_table'] ?? 'db_query_logs'));
@@ -207,31 +200,6 @@ class SlowTransactionMonitor
         if (! is_null($logEntry) && $slowQueriesCount > 0) {
             $this->writer->writeSlowQueries($logEntry, $slowQueries);
         }
-
-        if ($this->logEnabled) {
-            $payload = [
-                'transaction_label'  => $context['transaction_label'] ?? null,
-                'connection'         => $connection,
-                'status'             => $status,
-                'elapsed_ms'         => $elapsedMs,
-                'elapsed_seconds'    => round($elapsedMs / 1000, 3),
-                'total_queries'      => $totalQueries,
-                'slow_queries_count' => $slowQueriesCount,
-                'route_name'         => $requestContext['route_name'],
-                'method'             => $requestContext['method'],
-                'url'                => $requestContext['url'],
-                'ip_address'         => $requestContext['ip_address'],
-                'http_status'        => $httpStatus,
-                'user_id'            => $requestContext['user_id'],
-                'slow_queries'       => $this->sortedSlowQueries($slowQueries),
-            ];
-
-            if ($status === 'rolled_back') {
-                $payload['last_query'] = $context['last_query'] ?? null;
-            }
-
-            $this->logMessage($status, $payload);
-        }
     }
 
     private function resolveRawSql(QueryExecuted $event): string
@@ -263,51 +231,5 @@ class SlowTransactionMonitor
         } catch (Throwable) {
             return null;
         }
-    }
-
-    private function sortedSlowQueries(array $slowQueries): array
-    {
-        usort($slowQueries, static function (array $left, array $right): int {
-            return (int) ($right['time_ms'] ?? 0) <=> (int) ($left['time_ms'] ?? 0);
-        });
-
-        return $slowQueries;
-    }
-
-    private function logMessage(string $status, array $payload): void
-    {
-        if (! class_exists(Log::class)) {
-            return;
-        }
-
-        $level   = $status === 'rolled_back' ? 'error' : 'warning';
-        $message = $this->formatMessage($status, $payload);
-
-        try {
-            if ($this->logChannel) {
-                Log::channel($this->logChannel)->log($level, $message, $payload);
-            } else {
-                Log::log($level, $message, $payload);
-            }
-        } catch (Throwable) {
-            // Avoid breaking the request flow if logging fails.
-        }
-    }
-
-    private function formatMessage(string $status, array $payload): string
-    {
-        $elapsedMs = (int) ($payload['elapsed_ms'] ?? 0);
-        $queries   = (int) ($payload['total_queries'] ?? 0);
-        $url       = (string) ($payload['url'] ?? '');
-
-        $suffix = $url !== '' ? ' ' . $url : '';
-
-        return sprintf(
-            'Slow database transaction %s (%dms, %d queries)%s',
-            $status === 'rolled_back' ? 'rolled back' : 'committed',
-            $elapsedMs,
-            $queries,
-            $suffix
-        );
     }
 }

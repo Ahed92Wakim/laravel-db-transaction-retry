@@ -19,7 +19,6 @@ test('slow transaction monitor logs transaction and slow queries', function (): 
         'log_table'                => 'db_transaction_logs',
         'query_table'              => 'db_query_logs',
         'log_connection'           => null,
-        'log_enabled'              => false,
     ]);
 
     $connection = $database->connection();
@@ -69,7 +68,6 @@ test('slow transaction monitor updates http status after request handled', funct
         'log_table'                => 'db_transaction_logs',
         'query_table'              => 'db_query_logs',
         'log_connection'           => null,
-        'log_enabled'              => false,
     ]);
 
     $connection = $database->connection();
