@@ -19,11 +19,13 @@ import {
   apiBase,
   bucketForRange,
   formatBucketLabel,
+  formatDashboardDateTime,
   formatDurationMs,
   formatOptionalNumber,
   formatRouteLabel,
   formatValue,
   methodClassName,
+  resolveClientTimeZone,
   resolveBucket,
   resolveTimeWindow,
   timeRanges,
@@ -85,27 +87,6 @@ const normalizeParam = (value: string | null): string | null => {
 const toOptionalNumber = (value: unknown): number | null => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
-};
-
-const formatRequestDate = (value?: string | null, timeZone?: string | null): string => {
-  if (!value) {
-    return '--';
-  }
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return '--';
-  }
-
-  return new Intl.DateTimeFormat(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-    timeZone: timeZone ?? undefined,
-  }).format(date);
 };
 
 const resolveStatusTone = (status: number | null): string => {
@@ -176,13 +157,7 @@ export default function RouteDetailClient() {
   const routeKey = `${requestType}-${methodParam ?? ''}-${routeNameParam ?? ''}-${urlParam ?? ''}`;
 
   useEffect(() => {
-    if (typeof Intl === 'undefined') {
-      setClientTimeZone('UTC');
-      return;
-    }
-
-    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    setClientTimeZone(zone || 'UTC');
+    setClientTimeZone(resolveClientTimeZone());
   }, []);
 
   useEffect(() => {
@@ -731,7 +706,7 @@ export default function RouteDetailClient() {
 
                       return (
                         <tr key={row.id}>
-                          <td>{formatRequestDate(row.completed_at, clientTimeZone)}</td>
+                          <td>{formatDashboardDateTime(row.completed_at, clientTimeZone)}</td>
                           <td>
                             <span
                               className={`route-method route-method--text ${methodClassName(row.http_method)}`}

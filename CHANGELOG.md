@@ -31,3 +31,4 @@ The format is based on Keep a Changelog, and this project aims to follow Semanti
 - Safely handle null user in dashboard gate check.
 - Request logging now skips package dashboard/API requests and package artisan commands.
 - Fixed query exception persistence to write/read `db_exceptions.sql_query` consistently so exception rows are stored and displayed correctly.
+- Fixed dashboard date/time rendering to consistently use the client browser timezone for charts, tooltips, and detail tables.

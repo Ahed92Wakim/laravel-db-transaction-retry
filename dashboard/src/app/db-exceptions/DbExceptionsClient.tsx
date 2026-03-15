@@ -17,7 +17,9 @@ import {
   apiBase,
   bucketForRange,
   formatBucketLabel,
+  formatDashboardDateTime,
   formatValue,
+  resolveClientTimeZone,
   resolveBucket,
   resolveTimeWindow,
   timeRanges,
@@ -101,27 +103,6 @@ const formatErrorCode = (
   return sql ?? driver ?? '--';
 };
 
-const formatLastSeen = (value?: string | null, timeZone?: string | null): string => {
-  if (!value) {
-    return '--';
-  }
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return '--';
-  }
-
-  return new Intl.DateTimeFormat(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-    timeZone: timeZone ?? undefined,
-  }).format(date);
-};
-
 const formatHumanDate = (value?: string | null): string => {
   if (!value) {
     return '--';
@@ -185,13 +166,7 @@ export default function DbExceptionsClient() {
   const rangeShortLabel = selectedRange.label;
 
   useEffect(() => {
-    if (typeof Intl === 'undefined') {
-      setClientTimeZone('UTC');
-      return;
-    }
-
-    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    setClientTimeZone(zone || 'UTC');
+    setClientTimeZone(resolveClientTimeZone());
   }, []);
 
   useEffect(() => {
@@ -384,7 +359,10 @@ export default function DbExceptionsClient() {
         : noExceptionsInWindow
           ? 'No exceptions logged in this window.'
           : null;
-  const summaryLastSeenLabel = formatLastSeen(summaryTotals.lastSeen, clientTimeZone);
+  const summaryLastSeenLabel = formatDashboardDateTime(
+    summaryTotals.lastSeen,
+    clientTimeZone
+  );
   useEffect(() => {
     setExceptionPage((prev) => Math.min(prev, exceptionTotalPages));
   }, [exceptionTotalPages]);

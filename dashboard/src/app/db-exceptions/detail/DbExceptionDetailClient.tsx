@@ -18,7 +18,9 @@ import {
   apiBase,
   bucketForRange,
   formatBucketLabel,
+  formatDashboardDateTime,
   formatValue,
+  resolveClientTimeZone,
   resolveBucket,
   resolveTimeWindow,
   timeRanges,
@@ -84,27 +86,6 @@ const formatExceptionTitle = (exceptionClass?: string | null): string => {
   const last = parts[parts.length - 1];
 
   return last && last.length > 0 ? last : trimmed;
-};
-
-const formatLastSeen = (value?: string | null, timeZone?: string | null): string => {
-  if (!value) {
-    return '--';
-  }
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return '--';
-  }
-
-  return new Intl.DateTimeFormat(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-    timeZone: timeZone ?? undefined,
-  }).format(date);
 };
 
 const formatHumanDate = (value?: string | null): string => {
@@ -183,13 +164,7 @@ export default function DbExceptionDetailClient() {
   const rangeShortLabel = selectedRange.label;
 
   useEffect(() => {
-    if (typeof Intl === 'undefined') {
-      setClientTimeZone('UTC');
-      return;
-    }
-
-    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    setClientTimeZone(zone || 'UTC');
+    setClientTimeZone(resolveClientTimeZone());
   }, []);
 
   useEffect(() => {
@@ -375,7 +350,10 @@ export default function DbExceptionDetailClient() {
   const backHref = `/db-exceptions?window=${timeRange}`;
   const eventLabel = eventHash ? eventHash.slice(0, 12) : '--';
   const lastSeenLabel = formatHumanDate(groupDetail?.last_seen ?? null);
-  const windowStartLabel = formatLastSeen(timeWindow.from.toISOString(), clientTimeZone);
+  const windowStartLabel = formatDashboardDateTime(
+    timeWindow.from.toISOString(),
+    clientTimeZone
+  );
   const firstSeenLabel = useMemo(() => {
     const firstPoint = series
       .filter((point) => point.count > 0 && point.timestamp)
@@ -386,7 +364,7 @@ export default function DbExceptionDetailClient() {
       })[0];
 
     if (firstPoint?.timestamp) {
-      return formatLastSeen(firstPoint.timestamp, clientTimeZone);
+      return formatDashboardDateTime(firstPoint.timestamp, clientTimeZone);
     }
 
     return windowStartLabel;
@@ -546,7 +524,7 @@ export default function DbExceptionDetailClient() {
                     <tbody>
                       {occurrences.map((row) => (
                         <tr key={`${row.event_hash ?? 'event'}-${row.id}`}>
-                          <td>{formatLastSeen(row.occurred_at, clientTimeZone)}</td>
+                          <td>{formatDashboardDateTime(row.occurred_at, clientTimeZone)}</td>
                           <td>
                             {row.user_type ? `${row.user_type}` : '--'}
                             {row.user_id ? ` #${row.user_id}` : ''}

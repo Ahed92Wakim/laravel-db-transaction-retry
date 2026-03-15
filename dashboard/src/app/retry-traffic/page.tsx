@@ -21,6 +21,7 @@ import {
   formatRouteLabel,
   formatValue,
   methodClassName,
+  resolveClientTimeZone,
   resolveBucket,
   resolveTimeWindow,
   timeRanges,
@@ -80,13 +81,7 @@ export default function RetryTrafficPage() {
   const rangeShortLabel = selectedRange.label;
 
   useEffect(() => {
-    if (typeof Intl === 'undefined') {
-      setClientTimeZone('UTC');
-      return;
-    }
-
-    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    setClientTimeZone(zone || 'UTC');
+    setClientTimeZone(resolveClientTimeZone());
   }, []);
 
   useEffect(() => {
