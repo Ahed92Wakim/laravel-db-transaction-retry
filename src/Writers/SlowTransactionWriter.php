@@ -2,6 +2,8 @@
 
 namespace DatabaseTransactions\RetryHelper\Writers;
 
+use DatabaseTransactions\RetryHelper\Models\QueryLog;
+use DatabaseTransactions\RetryHelper\Models\SlowTransactionLog;
 use DatabaseTransactions\RetryHelper\Support\SerializationHelper;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -12,7 +14,7 @@ class SlowTransactionWriter
     private string $logTable;
     private string $queryTable;
     private ?string $logConnection;
-    private ?bool $logTableHasHttpStatus = null;
+    private ?bool $logTableHasHttpStatus       = null;
     private ?bool $queryTableHasLogCompletedAt = null;
 
     public function __construct(string $logTable, string $queryTable, ?string $logConnection = null)
@@ -31,6 +33,8 @@ class SlowTransactionWriter
         if ($this->logTable === '') {
             return null;
         }
+
+        $logModel = SlowTransactionLog::instance($this->logTable, $this->logConnection);
 
         $insert = [
             'transaction_label'   => $row['transaction_label']   ?? null,
@@ -53,9 +57,9 @@ class SlowTransactionWriter
         }
 
         try {
-            $db = $this->logConnection ? DB::connection($this->logConnection) : DB::connection();
+            $db = $logModel->getConnectionName() ? DB::connection($logModel->getConnectionName()) : DB::connection();
 
-            $id = $db->table($this->logTable)->insertGetId($insert);
+            $id = $db->table($logModel->getTable())->insertGetId($insert);
 
             if (! is_numeric($id)) {
                 return null;
@@ -87,12 +91,14 @@ class SlowTransactionWriter
         $logId = (int) $logId;
 
         $includeCompletedAt = $this->queryTableHasLogCompletedAt();
+        $logModel           = SlowTransactionLog::instance($this->logTable, $this->logConnection);
+        $queryModel         = QueryLog::instance($this->queryTable, $this->logConnection);
 
         $rows = [];
         foreach ($slowQueries as $query) {
             $row = [
                 'loggable_id'       => $logId,
-                'loggable_type'     => $this->logTable,
+                'loggable_type'     => $logModel->getTable(),
                 'raw_sql'           => (string) ($query['raw_sql'] ?? $query['sql'] ?? ''),
                 'sql_query'         => (string) ($query['sql_query'] ?? $query['sql'] ?? ''),
                 'bindings'          => SerializationHelper::encodeJson($query['bindings'] ?? null),
@@ -113,8 +119,8 @@ class SlowTransactionWriter
         }
 
         try {
-            $db = $this->logConnection ? DB::connection($this->logConnection) : DB::connection();
-            $db->table($this->queryTable)->insert($rows);
+            $db = $queryModel->getConnectionName() ? DB::connection($queryModel->getConnectionName()) : DB::connection();
+            $db->table($queryModel->getTable())->insert($rows);
         } catch (Throwable) {
             // Never interrupt the application flow if logging fails.
         }
@@ -131,9 +137,10 @@ class SlowTransactionWriter
         }
 
         try {
-            $db = $this->logConnection ? DB::connection($this->logConnection) : DB::connection();
+            $logModel = SlowTransactionLog::instance($this->logTable, $this->logConnection);
+            $db       = $logModel->getConnectionName() ? DB::connection($logModel->getConnectionName()) : DB::connection();
 
-            $db->table($this->logTable)
+            $db->table($logModel->getTable())
                 ->whereIn('id', $logIds)
                 ->update(['http_status' => $status]);
         } catch (Throwable) {
@@ -148,9 +155,10 @@ class SlowTransactionWriter
         }
 
         try {
-            $db                          = $this->logConnection ? DB::connection($this->logConnection) : DB::connection();
+            $logModel                    = SlowTransactionLog::instance($this->logTable, $this->logConnection);
+            $db                          = $logModel->getConnectionName() ? DB::connection($logModel->getConnectionName()) : DB::connection();
             $schema                      = $db->getSchemaBuilder();
-            $this->logTableHasHttpStatus = $schema->hasColumn($this->logTable, 'http_status');
+            $this->logTableHasHttpStatus = $schema->hasColumn($logModel->getTable(), 'http_status');
         } catch (Throwable) {
             $this->logTableHasHttpStatus = false;
         }
@@ -171,8 +179,9 @@ class SlowTransactionWriter
         }
 
         try {
-            $schema                            = $this->logConnection ? Schema::connection($this->logConnection) : Schema::connection();
-            $this->queryTableHasLogCompletedAt = $schema->hasColumn($this->queryTable, 'transaction_log_completed_at');
+            $queryModel                        = QueryLog::instance($this->queryTable, $this->logConnection);
+            $schema                            = $queryModel->getConnectionName() ? Schema::connection($queryModel->getConnectionName()) : Schema::connection();
+            $this->queryTableHasLogCompletedAt = $schema->hasColumn($queryModel->getTable(), 'transaction_log_completed_at');
         } catch (Throwable) {
             $this->queryTableHasLogCompletedAt = false;
         }

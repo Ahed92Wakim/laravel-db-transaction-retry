@@ -14,6 +14,7 @@ import {
 } from 'recharts';
 import DashboardShell from '../../components/DashboardShell';
 import {ChartTooltip} from '../../components/dashboard-ui';
+import {usePersistentTimeRange} from '../../lib/usePersistentTimeRange';
 import {
   apiBase,
   bucketForRange,
@@ -67,14 +68,6 @@ type ImpactWindow = '30d' | '7d' | '24h';
 
 const occurrencePageSize = 20;
 const impactWindows: ImpactWindow[] = ['30d', '7d', '24h'];
-
-const isValidTimeRange = (value: string | null): value is TimeRangeValue => {
-  if (!value) {
-    return false;
-  }
-
-  return timeRanges.some((range) => range.value === value);
-};
 
 const formatExceptionTitle = (exceptionClass?: string | null): string => {
   const trimmed = exceptionClass?.trim();
@@ -133,7 +126,7 @@ export default function DbExceptionDetailClient() {
   const eventHash = searchParams.get('eventHash');
 
   const [clientTimeZone, setClientTimeZone] = useState<string | null>(null);
-  const [timeRange, setTimeRange] = useState<TimeRangeValue>('24h');
+  const [timeRange, setTimeRange] = usePersistentTimeRange();
   const [groupDetail, setGroupDetail] = useState<ExceptionGroupDetail | null>(null);
   const [occurrences, setOccurrences] = useState<ExceptionOccurrence[]>([]);
   const [series, setSeries] = useState<ExceptionSeriesPoint[]>([]);
@@ -166,16 +159,6 @@ export default function DbExceptionDetailClient() {
   useEffect(() => {
     setClientTimeZone(resolveClientTimeZone());
   }, []);
-
-  useEffect(() => {
-    const windowParam = searchParams.get('window');
-
-    if (!isValidTimeRange(windowParam)) {
-      return;
-    }
-
-    setTimeRange((prev) => (prev === windowParam ? prev : windowParam));
-  }, [searchParams]);
 
   useEffect(() => {
     setOccurrencePage(1);

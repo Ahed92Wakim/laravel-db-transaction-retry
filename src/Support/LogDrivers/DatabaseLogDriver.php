@@ -4,6 +4,7 @@ namespace DatabaseTransactions\RetryHelper\Support\LogDrivers;
 
 use DatabaseTransactions\RetryHelper\Enums\LogLevel;
 use DatabaseTransactions\RetryHelper\Enums\RetryStatus;
+use DatabaseTransactions\RetryHelper\Models\TransactionRetryEvent;
 use Illuminate\Support\Facades\DB;
 use Throwable;
 
@@ -141,13 +142,10 @@ class DatabaseLogDriver
             'updated_at'      => $occurredAt,
         ];
 
-        $table = $this->loggingTable();
-        if ($table === '') {
-            return;
-        }
-
         try {
-            DB::table($table)->insert($row);
+            $model = TransactionRetryEvent::instance($this->loggingTable());
+
+            DB::table($model->getTable())->insert($row);
         } catch (Throwable) {
             // Never block transaction flow if persistence fails.
         }

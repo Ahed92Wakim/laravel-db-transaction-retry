@@ -1,6 +1,6 @@
 'use client';
 
-import {useEffect, useMemo, useState} from 'react';
+import {Suspense, useEffect, useMemo, useState} from 'react';
 import {useRouter} from 'next/navigation';
 import {
     Bar,
@@ -15,6 +15,7 @@ import {
 } from 'recharts';
 import DashboardShell from '../components/DashboardShell';
 import {QueryTooltip, renderStatusCell} from '../components/dashboard-ui';
+import {usePersistentTimeRange} from '../lib/usePersistentTimeRange';
 import {
     apiBase,
     bucketForRange,
@@ -32,16 +33,15 @@ import {
     type Bucket,
     type QueryMetric,
     type RouteVolumeMetric,
-    type TimeRangeValue,
 } from '../lib/dashboard';
 
 const routeVolumePageSize = 10;
 
-export default function TransactionsPage() {
+function TransactionsPageContent() {
 
     const router = useRouter();
     const [clientTimeZone, setClientTimeZone] = useState<string | null>(null);
-    const [timeRange, setTimeRange] = useState<TimeRangeValue>('24h');
+    const [timeRange, setTimeRange] = usePersistentTimeRange();
     const [routeVolumeMetrics, setRouteVolumeMetrics] = useState<RouteVolumeMetric[]>([]);
     const [routeVolumeStatus, setRouteVolumeStatus] = useState<'idle' | 'loading' | 'error'>(
         'idle'
@@ -583,5 +583,13 @@ export default function TransactionsPage() {
                 )}
             </section>
         </DashboardShell>
+    );
+}
+
+export default function TransactionsPage() {
+    return (
+        <Suspense fallback={null}>
+            <TransactionsPageContent />
+        </Suspense>
     );
 }

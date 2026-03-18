@@ -41,7 +41,7 @@ class TimeHelper
     public static function timestampFromMicrotime(float $microtime): string
     {
         $formatted = sprintf('%.6F', $microtime);
-        $date = DateTimeImmutable::createFromFormat('U.u', $formatted);
+        $date      = DateTimeImmutable::createFromFormat('U.u', $formatted);
 
         if ($date === false) {
             return self::nowTimestamp();

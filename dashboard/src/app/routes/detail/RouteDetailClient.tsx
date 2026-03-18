@@ -15,6 +15,7 @@ import {
 } from 'recharts';
 import DashboardShell from '../../components/DashboardShell';
 import {ChartTooltip, QueryTooltip} from '../../components/dashboard-ui';
+import {usePersistentTimeRange} from '../../lib/usePersistentTimeRange';
 import {
   apiBase,
   bucketForRange,
@@ -31,7 +32,6 @@ import {
   timeRanges,
   toCount,
   type Bucket,
-  type TimeRangeValue,
 } from '../../lib/dashboard';
 
 type RequestTrafficPoint = {
@@ -71,14 +71,6 @@ type DurationSummary = {
 
 const requestPageSize = 20;
 
-const isValidTimeRange = (value: string | null): value is TimeRangeValue => {
-  if (!value) {
-    return false;
-  }
-
-  return timeRanges.some((range) => range.value === value);
-};
-
 const normalizeParam = (value: string | null): string | null => {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
@@ -108,7 +100,7 @@ const resolveStatusTone = (status: number | null): string => {
 export default function RouteDetailClient() {
   const searchParams = useSearchParams();
   const [clientTimeZone, setClientTimeZone] = useState<string | null>(null);
-  const [timeRange, setTimeRange] = useState<TimeRangeValue>('24h');
+  const [timeRange, setTimeRange] = usePersistentTimeRange();
   const [requestTraffic, setRequestTraffic] = useState<RequestTrafficPoint[]>([]);
   const [requestTrafficBucket, setRequestTrafficBucket] = useState<Bucket | null>(null);
   const [requestTrafficStatus, setRequestTrafficStatus] = useState<
@@ -147,7 +139,6 @@ export default function RouteDetailClient() {
   const rangeLabel = selectedRange.windowLabel;
   const rangeShortLabel = selectedRange.label;
 
-  const windowParam = searchParams.get('window');
   const routeNameParam = normalizeParam(searchParams.get('route_name'));
   const urlParam = normalizeParam(searchParams.get('url'));
   const methodParam = normalizeParam(searchParams.get('method'));
@@ -159,14 +150,6 @@ export default function RouteDetailClient() {
   useEffect(() => {
     setClientTimeZone(resolveClientTimeZone());
   }, []);
-
-  useEffect(() => {
-    if (!isValidTimeRange(windowParam)) {
-      return;
-    }
-
-    setTimeRange((prev) => (prev === windowParam ? prev : windowParam));
-  }, [windowParam]);
 
   useEffect(() => {
     setRequestPage(1);

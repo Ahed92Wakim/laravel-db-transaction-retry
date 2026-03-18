@@ -15,7 +15,7 @@ test('request monitor logs request and queries', function (): void {
     $this->app->instance('db', $database);
 
     $startTime = microtime(true) - 0.05;
-    $request = new FakeRequestLogRequest(
+    $request   = new FakeRequestLogRequest(
         server: ['REQUEST_TIME_FLOAT' => $startTime],
         method: 'POST',
         route: new FakeRoute('orders/{order}', 'orders.show'),
@@ -25,9 +25,9 @@ test('request monitor logs request and queries', function (): void {
     $this->app->instance('request', $request);
 
     $monitor = new RequestMonitor([
-        'enabled' => true,
-        'log_table' => 'db_request_logs',
-        'query_table' => 'db_query_logs',
+        'enabled'        => true,
+        'log_table'      => 'db_request_logs',
+        'query_table'    => 'db_query_logs',
         'log_connection' => null,
     ]);
 
@@ -82,9 +82,9 @@ test('request monitor skips requests without queries', function (): void {
     $this->app->instance('request', $request);
 
     $monitor = new RequestMonitor([
-        'enabled' => true,
-        'log_table' => 'db_request_logs',
-        'query_table' => 'db_query_logs',
+        'enabled'        => true,
+        'log_table'      => 'db_request_logs',
+        'query_table'    => 'db_query_logs',
         'log_connection' => null,
     ]);
 
@@ -101,13 +101,13 @@ test('request monitor logs command queries', function (): void {
     $this->app->instance('db', $database);
 
     $monitor = new RequestMonitor([
-        'enabled' => true,
-        'log_table' => 'db_request_logs',
-        'query_table' => 'db_query_logs',
+        'enabled'        => true,
+        'log_table'      => 'db_request_logs',
+        'query_table'    => 'db_query_logs',
         'log_connection' => null,
     ]);
 
-    $input = new ArrayInput([]);
+    $input  = new ArrayInput([]);
     $output = new NullOutput();
 
     $monitor->handleCommandStarting(new CommandStarting('queue:work', $input, $output));
@@ -144,9 +144,9 @@ test('request monitor ignores package table queries', function (): void {
     $this->app->instance('request', $request);
 
     $monitor = new RequestMonitor([
-        'enabled' => true,
-        'log_table' => 'db_request_logs',
-        'query_table' => 'db_query_logs',
+        'enabled'        => true,
+        'log_table'      => 'db_request_logs',
+        'query_table'    => 'db_query_logs',
         'log_connection' => null,
     ]);
 
@@ -171,9 +171,9 @@ test('request monitor ignores package dashboard and api requests', function (): 
     $this->app->instance('db', $database);
 
     $monitor = new RequestMonitor([
-        'enabled' => true,
-        'log_table' => 'db_request_logs',
-        'query_table' => 'db_query_logs',
+        'enabled'        => true,
+        'log_table'      => 'db_request_logs',
+        'query_table'    => 'db_query_logs',
         'log_connection' => null,
     ]);
 
@@ -216,7 +216,7 @@ final class FakeRequestDatabaseManager
 {
     /** @var list<array{table:string,row:array}> */
     public array $insertedRows = [];
-    public int $lastInsertId = 0;
+    public int $lastInsertId   = 0;
 
     private FakeRequestConnection $connection;
 

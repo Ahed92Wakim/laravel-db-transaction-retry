@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Area,
@@ -14,6 +14,7 @@ import {
 } from 'recharts';
 import DashboardShell from '../components/DashboardShell';
 import { ChartTooltip } from '../components/dashboard-ui';
+import {usePersistentTimeRange} from '../lib/usePersistentTimeRange';
 import {
   apiBase,
   bucketForRange,
@@ -28,15 +29,14 @@ import {
   toCount,
   type Bucket,
   type RouteMetric,
-  type TimeRangeValue,
 } from '../lib/dashboard';
 
 const routeMetricsPageSize = 10;
 
-export default function RetryTrafficPage() {
+function RetryTrafficPageContent() {
   const router = useRouter();
   const [clientTimeZone, setClientTimeZone] = useState<string | null>(null);
-  const [timeRange, setTimeRange] = useState<TimeRangeValue>('24h');
+  const [timeRange, setTimeRange] = usePersistentTimeRange();
   const [attemptRecords, setAttemptRecords] = useState<number | null>(null);
   const [successRecords, setSuccessRecords] = useState<number | null>(null);
   const [failureRecords, setFailureRecords] = useState<number | null>(null);
@@ -638,5 +638,13 @@ export default function RetryTrafficPage() {
         )}
       </section>
     </DashboardShell>
+  );
+}
+
+export default function RetryTrafficPage() {
+  return (
+    <Suspense fallback={null}>
+      <RetryTrafficPageContent />
+    </Suspense>
   );
 }

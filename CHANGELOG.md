@@ -17,6 +17,8 @@ The format is based on Keep a Changelog, and this project aims to follow Semanti
 - Added optional `method`, `route_name`, and `url` filters for request metrics/duration/requests endpoints.
 - Added Pest coverage for the install command, partition rolling command, slow transaction monitor logging flow, and dashboard authorization.
 - Added `metrics/queries-volume` and `metrics/queries-duration` endpoints for chart-specific transaction metrics.
+- Added Eloquent models for the package tables with attribute casts, and routed dashboard queries through those models.
+- Added dedicated `JsonResource` classes for each dashboard API response so endpoint payloads are normalized consistently.
 
 ### Removed
 - Removed file- and channel-based retry logging configuration so retry events are now persisted only to the database.
@@ -32,3 +34,5 @@ The format is based on Keep a Changelog, and this project aims to follow Semanti
 - Request logging now skips package dashboard/API requests and package artisan commands.
 - Fixed query exception persistence to write/read `db_exceptions.sql_query` consistently so exception rows are stored and displayed correctly.
 - Fixed dashboard date/time rendering to consistently use the client browser timezone for charts, tooltips, and detail tables.
+- Fixed API datetime serialization so response timestamps are returned in ISO-8601 timezone-aware format.
+- Fixed request and command chart bucket selection so their x-axis granularity now matches the transactions charts for `1H`, `24H`, `7D`, `14D`, and `30D`.

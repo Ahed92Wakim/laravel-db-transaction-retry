@@ -192,10 +192,12 @@ export default function DashboardShell({
                 }`;
 
               if (item.href && !item.disabled) {
+                const href = `${item.href}?${new URLSearchParams({window: timeRange}).toString()}`;
+
                 return (
                   <Link
                     key={item.label}
-                    href={item.href}
+                    href={href}
                     className={classes}
                     aria-current={isActive ? 'page' : undefined}
                   >

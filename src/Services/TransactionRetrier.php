@@ -44,8 +44,8 @@ class TransactionRetrier
             return DB::transaction($callback);
         }
 
-        $maxRetries  ??= (int) ($config['max_retries'] ?? 3);
-        $retryDelay  ??= (int) ($config['retry_delay'] ?? 2);
+        $maxRetries ??= (int) ($config['max_retries'] ?? 3);
+        $retryDelay ??= (int) ($config['retry_delay'] ?? 2);
 
         $maxRetries = max(1, $maxRetries);
         $retryDelay = max(1, $retryDelay);
@@ -196,7 +196,7 @@ class TransactionRetrier
         $context['trace'] = TraceFormatter::snapshot();
 
         try {
-            $requestData = RequestContext::snapshot();
+            $requestData              = RequestContext::snapshot();
             $context['url']           = $requestData['url'];
             $context['method']        = $requestData['method'];
             $context['routeName']     = $requestData['route_name'];

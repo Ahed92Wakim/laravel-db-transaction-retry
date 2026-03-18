@@ -1,6 +1,6 @@
 'use client';
 
-import {useEffect, useMemo, useState} from 'react';
+import {Suspense, useEffect, useMemo, useState} from 'react';
 import {useRouter} from 'next/navigation';
 import {
   Bar,
@@ -15,6 +15,7 @@ import {
 } from 'recharts';
 import DashboardShell from '../components/DashboardShell';
 import {ChartTooltip, QueryTooltip, renderStatusCell} from '../components/dashboard-ui';
+import {usePersistentTimeRange} from '../lib/usePersistentTimeRange';
 import {
   apiBase,
   bucketForRange,
@@ -30,7 +31,6 @@ import {
   timeRanges,
   toCount,
   type Bucket,
-  type TimeRangeValue,
 } from '../lib/dashboard';
 
 type RequestTrafficPoint = {
@@ -76,10 +76,10 @@ const toOptionalNumber = (value: unknown): number | null => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
-export default function CommandsPage() {
+function CommandsPageContent() {
   const router = useRouter();
   const [clientTimeZone, setClientTimeZone] = useState<string | null>(null);
-  const [timeRange, setTimeRange] = useState<TimeRangeValue>('24h');
+  const [timeRange, setTimeRange] = usePersistentTimeRange();
   const [requestTraffic, setRequestTraffic] = useState<RequestTrafficPoint[]>([]);
   const [requestTrafficBucket, setRequestTrafficBucket] = useState<Bucket | null>(null);
   const [requestTrafficStatus, setRequestTrafficStatus] = useState<
@@ -103,6 +103,9 @@ export default function CommandsPage() {
   const [routeMetricsPage, setRouteMetricsPage] = useState<number>(1);
   const [routeMetricsTotal, setRouteMetricsTotal] = useState<number>(0);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [visibleStatuses, setVisibleStatuses] = useState<Set<'1xx_3xx' | '4xx' | '5xx'>>(
+    new Set(['1xx_3xx', '4xx', '5xx'])
+  );
 
   const selectedRange =
     timeRanges.find((range) => range.value === timeRange) ?? timeRanges[1];
@@ -335,6 +338,17 @@ export default function CommandsPage() {
     [clientTimeZone, requestTraffic, requestTrafficBucket]
   );
 
+  const filteredTrafficDisplay = useMemo(
+    () =>
+      trafficDisplay.map((point) => ({
+        ...point,
+        status_1xx_3xx: visibleStatuses.has('1xx_3xx') ? point.status_1xx_3xx : 0,
+        status_4xx: visibleStatuses.has('4xx') ? point.status_4xx : 0,
+        status_5xx: visibleStatuses.has('5xx') ? point.status_5xx : 0,
+      })),
+    [trafficDisplay, visibleStatuses]
+  );
+
   const durationDisplay = useMemo(
     () =>
       requestDuration.map((point) => ({
@@ -467,21 +481,60 @@ export default function CommandsPage() {
                 </span>
               </div>
               <div className="chart-summary__stats">
-                <div className="chart-summary__stat">
-                  <span className="legend-dot" />
-                  <span>1/2/3xx</span>
-                  <strong>{formatOptionalNumber(trafficSummary.status_1xx_3xx)}</strong>
-                </div>
-                <div className="chart-summary__stat">
-                  <span className="legend-dot legend-dot--gold" />
-                  <span>4xx</span>
-                  <strong>{formatOptionalNumber(trafficSummary.status_4xx)}</strong>
-                </div>
-                <div className="chart-summary__stat">
-                  <span className="legend-dot legend-dot--hot" />
-                  <span>5xx</span>
-                  <strong>{formatOptionalNumber(trafficSummary.status_5xx)}</strong>
-                </div>
+                {[
+                  {
+                    key: '1xx_3xx',
+                    label: '1/2/3xx',
+                    dotClass: '',
+                    value: trafficSummary.status_1xx_3xx,
+                  },
+                  {
+                    key: '4xx',
+                    label: '4xx',
+                    dotClass: 'legend-dot--gold',
+                    value: trafficSummary.status_4xx,
+                  },
+                  {
+                    key: '5xx',
+                    label: '5xx',
+                    dotClass: 'legend-dot--hot',
+                    value: trafficSummary.status_5xx,
+                  },
+                ].map(({key, label, dotClass, value}) => {
+                  const isVisible = visibleStatuses.has(key as '1xx_3xx' | '4xx' | '5xx');
+                  return (
+                    <div
+                      key={key}
+                      role="button"
+                      tabIndex={0}
+                      className={`chart-summary__stat chart-summary__stat--clickable${!isVisible ? ' chart-summary__stat--inactive' : ''}`}
+                      onClick={() => {
+                        const newStatuses = new Set(visibleStatuses);
+                        if (newStatuses.has(key as '1xx_3xx' | '4xx' | '5xx')) {
+                          newStatuses.delete(key as '1xx_3xx' | '4xx' | '5xx');
+                        } else {
+                          newStatuses.add(key as '1xx_3xx' | '4xx' | '5xx');
+                        }
+                        setVisibleStatuses(newStatuses);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          const newStatuses = new Set(visibleStatuses);
+                          if (newStatuses.has(key as '1xx_3xx' | '4xx' | '5xx')) {
+                            newStatuses.delete(key as '1xx_3xx' | '4xx' | '5xx');
+                          } else {
+                            newStatuses.add(key as '1xx_3xx' | '4xx' | '5xx');
+                          }
+                          setVisibleStatuses(newStatuses);
+                        }
+                      }}
+                    >
+                      <span className={`legend-dot${dotClass ? ` ${dotClass}` : ''}`} />
+                      <span>{label}</span>
+                      <strong>{formatOptionalNumber(value)}</strong>
+                    </div>
+                  );
+                })}
               </div>
             </div>
             <div className={`chart-frame${requestTrafficMessage ? ' chart-frame--empty' : ''}`}>
@@ -490,7 +543,7 @@ export default function CommandsPage() {
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
-                    data={trafficDisplay}
+                    data={filteredTrafficDisplay}
                     margin={{top: 10, right: 20, left: 0, bottom: 0}}
                     syncId="request-metrics"
                     syncMethod="index"
@@ -689,5 +742,13 @@ export default function CommandsPage() {
         )}
       </section>
     </DashboardShell>
+  );
+}
+
+export default function CommandsPage() {
+  return (
+    <Suspense fallback={null}>
+      <CommandsPageContent />
+    </Suspense>
   );
 }

@@ -78,10 +78,10 @@ class RequestContext
                     $data['user_type'] = get_class($user);
 
                     if (method_exists($user, 'getAuthIdentifier')) {
-                        $id = $user->getAuthIdentifier();
+                        $id              = $user->getAuthIdentifier();
                         $data['user_id'] = (is_scalar($id) || (is_object($id) && method_exists($id, '__toString'))) ? (string) $id : null;
                     } elseif (isset($user->id)) {
-                        $id = $user->id;
+                        $id              = $user->id;
                         $data['user_id'] = (is_scalar($id) || (is_object($id) && method_exists($id, '__toString'))) ? (string) $id : null;
                     }
                 }

@@ -1,5 +1,7 @@
 :root {
   color-scheme: light;
+  --font-display: "Avenir Next", Avenir, "Segoe UI", sans-serif;
+  --font-body: "Avenir Next", "Segoe UI", sans-serif;
   --bg: #f5f1e8;
   --bg-soft: #f1f6f4;
   --ink: #0f172a;
@@ -641,8 +643,9 @@ h3 {
 }
 
 .chart-summary__stats {
-  display: grid;
-  gap: 0.4rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.2rem;
   font-size: 0.8rem;
   color: var(--muted);
   min-width: 160px;
@@ -656,6 +659,30 @@ h3 {
 
 .chart-summary__stat strong {
   margin-left: auto;
+}
+
+.chart-summary__stat--clickable {
+  cursor: pointer;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.chart-summary__stat--clickable:hover {
+  background: rgba(15, 23, 42, 0.06);
+}
+
+.chart-summary__stat--inactive {
+  opacity: 0.4;
+}
+
+.chart-summary__stat--inactive:hover {
+  background: transparent;
+}
+
+:root[data-theme="dark"] .chart-summary__stat--clickable:hover {
+  background: rgba(148, 163, 184, 0.1);
 }
 
 .chart-summary__ranges {
@@ -744,6 +771,13 @@ h3 {
   align-items: center;
   gap: 0.4rem;
   margin-top: 0.25rem;
+}
+
+.tooltip__item--total {
+  margin-top: 0.45rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  font-weight: 600;
 }
 
 .tooltip__dot {

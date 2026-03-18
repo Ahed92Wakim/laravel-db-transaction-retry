@@ -11,6 +11,21 @@ export const timeRanges = [
 export const routeMetricsLimit = 50;
 
 export type TimeRangeValue = (typeof timeRanges)[number]['value'];
+export const defaultTimeRange: TimeRangeValue = '24h';
+
+export const isValidTimeRange = (
+  value: string | null | undefined
+): value is TimeRangeValue => {
+  if (!value) {
+    return false;
+  }
+
+  return timeRanges.some((range) => range.value === value);
+};
+
+export const resolveTimeRange = (
+  value: string | null | undefined
+): TimeRangeValue => (isValidTimeRange(value) ? value : defaultTimeRange);
 
 export type Bucket =
   | 'minute'

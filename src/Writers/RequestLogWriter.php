@@ -2,6 +2,8 @@
 
 namespace DatabaseTransactions\RetryHelper\Writers;
 
+use DatabaseTransactions\RetryHelper\Models\QueryLog;
+use DatabaseTransactions\RetryHelper\Models\RequestLog;
 use DatabaseTransactions\RetryHelper\Support\SerializationHelper;
 use Illuminate\Support\Facades\DB;
 use Throwable;
@@ -30,9 +32,10 @@ class RequestLogWriter
                 return;
             }
 
-            $db = $this->logConnection ? DB::connection($this->logConnection) : DB::connection();
+            $logModel = RequestLog::instance($this->logTable, $this->logConnection);
+            $db       = $logModel->getConnectionName() ? DB::connection($logModel->getConnectionName()) : DB::connection();
 
-            $logId = $db->table($this->logTable)->insertGetId($row);
+            $logId = $db->table($logModel->getTable())->insertGetId($row);
 
             if (! is_numeric($logId)) {
                 return;
@@ -50,11 +53,14 @@ class RequestLogWriter
             return;
         }
 
+        $logModel   = RequestLog::instance($this->logTable, $this->logConnection);
+        $queryModel = QueryLog::instance($this->queryTable, $this->logConnection);
+
         $rows = [];
         foreach ($queries as $query) {
             $rows[] = [
                 'loggable_id'       => $logId,
-                'loggable_type'     => $this->logTable,
+                'loggable_type'     => $logModel->getTable(),
                 'raw_sql'           => (string) ($query['raw_sql'] ?? $query['sql'] ?? ''),
                 'sql_query'         => (string) ($query['sql_query'] ?? $query['sql'] ?? ''),
                 'bindings'          => SerializationHelper::encodeJson($query['bindings'] ?? null),
@@ -68,7 +74,7 @@ class RequestLogWriter
             return;
         }
 
-        $db = $this->logConnection ? DB::connection($this->logConnection) : DB::connection();
-        $db->table($this->queryTable)->insert($rows);
+        $db = $queryModel->getConnectionName() ? DB::connection($queryModel->getConnectionName()) : DB::connection();
+        $db->table($queryModel->getTable())->insert($rows);
     }
 }

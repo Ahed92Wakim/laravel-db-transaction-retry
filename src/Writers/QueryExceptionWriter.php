@@ -2,6 +2,7 @@
 
 namespace DatabaseTransactions\RetryHelper\Writers;
 
+use DatabaseTransactions\RetryHelper\Models\DbException;
 use Illuminate\Support\Facades\DB;
 use Throwable;
 
@@ -27,8 +28,10 @@ class QueryExceptionWriter
                 return;
             }
 
-            $db = $this->logConnection ? DB::connection($this->logConnection) : DB::connection();
-            $db->table($this->logTable)->insert($row);
+            $model = DbException::instance($this->logTable, $this->logConnection);
+            $db    = $model->getConnectionName() ? DB::connection($model->getConnectionName()) : DB::connection();
+
+            $db->table($model->getTable())->insert($row);
         } catch (Throwable) {
             // Never allow logging failures to interfere with exception handling.
         }

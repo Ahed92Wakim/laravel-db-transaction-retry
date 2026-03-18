@@ -14,24 +14,24 @@ class RequestMonitor
     private bool $enabled;
     private string $logTable;
     private string $queryTable;
-    private ?array $context = null;
+    private ?array $context        = null;
     private ?array $pendingCommand = null;
-    private bool $isPersisting = false;
+    private bool $isPersisting     = false;
     /** @var list<string> */
     private array $ignoreTables = [];
     private RequestLogWriter $writer;
 
     public function __construct(array $config)
     {
-        $this->enabled  = ! RetryToggle::isExplicitlyDisabledValue($config['enabled'] ?? true);
-        $this->logTable = trim((string) ($config['log_table'] ?? 'db_request_logs'));
+        $this->enabled    = ! RetryToggle::isExplicitlyDisabledValue($config['enabled'] ?? true);
+        $this->logTable   = trim((string) ($config['log_table'] ?? 'db_request_logs'));
         $this->queryTable = trim((string) ($config['query_table'] ?? 'db_query_logs'));
-        $logConnection = isset($config['log_connection']) && $config['log_connection'] !== ''
+        $logConnection    = isset($config['log_connection']) && $config['log_connection'] !== ''
             ? (string) $config['log_connection']
             : null;
-        
+
         $this->ignoreTables = $this->resolveIgnoreTables();
-        $this->writer = new RequestLogWriter($this->logTable, $this->queryTable, $logConnection);
+        $this->writer       = new RequestLogWriter($this->logTable, $this->queryTable, $logConnection);
     }
 
     public function handleCommandStarting(CommandStarting $event): void
@@ -88,7 +88,7 @@ class RequestMonitor
             return;
         }
 
-        $queryCount = (int) ($this->context['query_count'] ?? 0) + 1;
+        $queryCount                   = (int) ($this->context['query_count'] ?? 0) + 1;
         $this->context['query_count'] = $queryCount;
 
         $timeMs   = is_numeric($event->time) ? (int) round($event->time) : 0;
@@ -203,7 +203,7 @@ class RequestMonitor
 
     private function finalizeContext(?int $httpStatus): void
     {
-        $context = $this->context;
+        $context       = $this->context;
         $this->context = null;
 
         if (! is_array($context)) {
@@ -223,11 +223,11 @@ class RequestMonitor
             'completed_at'        => $completedAt,
             'elapsed_ms'          => $elapsedMs,
             'total_queries_count' => (int) ($context['query_count'] ?? count($queries)),
-            'user_id'             => $context['user_id'] ?? null,
-            'route_name'          => $context['route_name'] ?? null,
+            'user_id'             => $context['user_id']     ?? null,
+            'route_name'          => $context['route_name']  ?? null,
             'http_method'         => $context['http_method'] ?? null,
-            'url'                 => $context['url'] ?? null,
-            'ip_address'          => $context['ip_address'] ?? null,
+            'url'                 => $context['url']         ?? null,
+            'ip_address'          => $context['ip_address']  ?? null,
             'http_status'         => $httpStatus,
         ];
 

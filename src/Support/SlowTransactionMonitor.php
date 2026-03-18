@@ -174,7 +174,7 @@ class SlowTransactionMonitor
         $startedAt   = $context['started_at'] ?? $completedAt;
 
         $requestContext = RequestContext::snapshot();
-        $httpStatus  = is_int($this->lastResponseStatus) ? $this->lastResponseStatus : null;
+        $httpStatus     = is_int($this->lastResponseStatus) ? $this->lastResponseStatus : null;
 
         $logEntry = $this->writer->writeTransactionLog([
             'transaction_label'   => $context['transaction_label'] ?? null,
