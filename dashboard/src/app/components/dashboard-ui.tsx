@@ -67,21 +67,43 @@ export const renderStatusCell = (
   );
 };
 
-export function ChartTooltip({active, payload, label}: TooltipProps<number, string>) {
+type ChartTooltipProps = TooltipProps<number, string> & {
+  timeZone?: string | null;
+};
+
+export function ChartTooltip({active, payload, label, timeZone}: ChartTooltipProps) {
   if (!active || !payload || payload.length === 0) {
     return null;
   }
 
-  const title = label ?? payload[0]?.name ?? 'Snapshot';
+  const timestamp = payload[0]?.payload?.timestamp as string | undefined;
+  const fallbackLabel = label ?? payload[0]?.name ?? 'Snapshot';
+  const title = formatTooltipTimestamp(timestamp, timeZone, String(fallbackLabel));
+
+  const total = payload.reduce((sum, entry) => {
+    const numeric = typeof entry.value === 'number' ? entry.value : Number(entry.value);
+    return Number.isFinite(numeric) ? sum + numeric : sum;
+  }, 0);
 
   return (
     <div className="tooltip">
       <strong>{title}</strong>
-      {payload.map((entry) => (
-        <div key={`${entry.name}-${entry.value}`}>
-          {entry.name}: {formatValue(entry.value ?? 0)}
-        </div>
-      ))}
+      {payload.map((entry) => {
+        const key = `${entry.name ?? entry.dataKey ?? 'value'}-${entry.value}`;
+        const labelText = entry.name ?? String(entry.dataKey ?? 'Value');
+        const dotColor = entry.color ?? 'var(--accent)';
+        return (
+          <div key={key} className="tooltip__item">
+            <span className="tooltip__dot" style={{backgroundColor: dotColor}} />
+            <span className="tooltip__label">{labelText}</span>
+            <span className="tooltip__value">{formatOptionalNumber(typeof entry.value === 'number' ? entry.value : Number(entry.value))}</span>
+          </div>
+        );
+      })}
+      <div className="tooltip__item tooltip__item--total">
+        <span className="tooltip__label">TOTAL</span>
+        <span className="tooltip__value">{formatOptionalNumber(total)}</span>
+      </div>
     </div>
   );
 }

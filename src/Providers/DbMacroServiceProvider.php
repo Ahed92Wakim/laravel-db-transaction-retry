@@ -29,14 +29,12 @@ class DbMacroServiceProvider extends ServiceProvider
             Closure $callback,
             ?int $maxRetries = null,
             ?int $retryDelay = null,
-            ?string $logFileName = null,
             string $trxLabel = ''
         ) {
             return TransactionRetrier::runWithRetry(
                 $callback,
                 $maxRetries,
                 $retryDelay,
-                $logFileName,
                 $trxLabel
             );
         };

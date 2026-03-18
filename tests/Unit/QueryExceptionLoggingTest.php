@@ -29,6 +29,8 @@ test('logs query exceptions to the database through the service provider', funct
     expect($insert['row']['exception_class'])->toBe(QueryException::class);
     expect($insert['row']['driver_code'])->toBe(1213);
     expect($insert['row']['sql_state'])->toBe('40001');
+    expect($insert['row']['sql_query'])->toBe('insert into foo (bar) values (?)');
+    expect($insert['row'])->not->toHaveKey('sql');
     expect($insert['row']['raw_sql'])->toContain("'baz'");
     expect($insert['row']['event_hash'])->not->toBeNull();
 });

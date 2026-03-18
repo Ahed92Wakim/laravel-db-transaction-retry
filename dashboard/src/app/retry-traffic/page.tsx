@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Area,
   CartesianGrid,
@@ -13,6 +14,7 @@ import {
 } from 'recharts';
 import DashboardShell from '../components/DashboardShell';
 import { ChartTooltip } from '../components/dashboard-ui';
+import {usePersistentTimeRange} from '../lib/usePersistentTimeRange';
 import {
   apiBase,
   bucketForRange,
@@ -20,20 +22,21 @@ import {
   formatRouteLabel,
   formatValue,
   methodClassName,
+  resolveClientTimeZone,
   resolveBucket,
   resolveTimeWindow,
   timeRanges,
   toCount,
   type Bucket,
   type RouteMetric,
-  type TimeRangeValue,
 } from '../lib/dashboard';
 
 const routeMetricsPageSize = 10;
 
-export default function RetryTrafficPage() {
+function RetryTrafficPageContent() {
+  const router = useRouter();
   const [clientTimeZone, setClientTimeZone] = useState<string | null>(null);
-  const [timeRange, setTimeRange] = useState<TimeRangeValue>('24h');
+  const [timeRange, setTimeRange] = usePersistentTimeRange();
   const [attemptRecords, setAttemptRecords] = useState<number | null>(null);
   const [successRecords, setSuccessRecords] = useState<number | null>(null);
   const [failureRecords, setFailureRecords] = useState<number | null>(null);
@@ -78,13 +81,7 @@ export default function RetryTrafficPage() {
   const rangeShortLabel = selectedRange.label;
 
   useEffect(() => {
-    if (typeof Intl === 'undefined') {
-      setClientTimeZone('UTC');
-      return;
-    }
-
-    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    setClientTimeZone(zone || 'UTC');
+    setClientTimeZone(resolveClientTimeZone());
   }, []);
 
   useEffect(() => {
@@ -447,6 +444,27 @@ export default function RetryTrafficPage() {
     setRouteMetricsPage(1);
   }, [timeRange]);
 
+  const buildRouteDetailHref = (row: RouteMetric): string | null => {
+    if (!row.route_name && !row.url) {
+      return null;
+    }
+
+    const params = new URLSearchParams();
+    if (row.method) {
+      params.set('method', row.method);
+    }
+    if (row.route_name) {
+      params.set('route_name', row.route_name);
+    }
+    if (row.url) {
+      params.set('url', row.url);
+    }
+    params.set('window', timeRange);
+    params.set('type', 'http');
+
+    return `/routes/detail?${params.toString()}`;
+  };
+
   return (
     <DashboardShell
       timeRange={timeRange}
@@ -567,6 +585,13 @@ export default function RetryTrafficPage() {
                   {routeMetricsPageRows.map((row) => (
                     <tr
                       key={`${row.route_hash ?? 'route'}-${row.method ?? 'method'}-${row.route_name ?? row.url ?? 'unknown'}`}
+                      className="route-row"
+                      onClick={() => {
+                        const href = buildRouteDetailHref(row);
+                        if (href) {
+                          router.push(href);
+                        }
+                      }}
                     >
                       <td>
                         <span
@@ -613,5 +638,13 @@ export default function RetryTrafficPage() {
         )}
       </section>
     </DashboardShell>
+  );
+}
+
+export default function RetryTrafficPage() {
+  return (
+    <Suspense fallback={null}>
+      <RetryTrafficPageContent />
+    </Suspense>
   );
 }

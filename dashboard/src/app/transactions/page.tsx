@@ -1,6 +1,7 @@
 'use client';
 
-import {useEffect, useMemo, useState} from 'react';
+import {Suspense, useEffect, useMemo, useState} from 'react';
+import {useRouter} from 'next/navigation';
 import {
     Bar,
     BarChart,
@@ -14,6 +15,7 @@ import {
 } from 'recharts';
 import DashboardShell from '../components/DashboardShell';
 import {QueryTooltip, renderStatusCell} from '../components/dashboard-ui';
+import {usePersistentTimeRange} from '../lib/usePersistentTimeRange';
 import {
     apiBase,
     bucketForRange,
@@ -23,6 +25,7 @@ import {
     formatRouteLabel,
     formatValue,
     methodClassName,
+    resolveClientTimeZone,
     resolveBucket,
     resolveTimeWindow,
     timeRanges,
@@ -30,15 +33,15 @@ import {
     type Bucket,
     type QueryMetric,
     type RouteVolumeMetric,
-    type TimeRangeValue,
 } from '../lib/dashboard';
 
 const routeVolumePageSize = 10;
 
-export default function TransactionsPage() {
+function TransactionsPageContent() {
 
+    const router = useRouter();
     const [clientTimeZone, setClientTimeZone] = useState<string | null>(null);
-    const [timeRange, setTimeRange] = useState<TimeRangeValue>('24h');
+    const [timeRange, setTimeRange] = usePersistentTimeRange();
     const [routeVolumeMetrics, setRouteVolumeMetrics] = useState<RouteVolumeMetric[]>([]);
     const [routeVolumeStatus, setRouteVolumeStatus] = useState<'idle' | 'loading' | 'error'>(
         'idle'
@@ -72,13 +75,7 @@ export default function TransactionsPage() {
     }, [timeRange]);
 
     useEffect(() => {
-        if (typeof Intl === 'undefined') {
-            setClientTimeZone('UTC');
-            return;
-        }
-
-        const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        setClientTimeZone(zone || 'UTC');
+        setClientTimeZone(resolveClientTimeZone());
     }, []);
 
     useEffect(() => {
@@ -347,6 +344,27 @@ export default function TransactionsPage() {
         setRouteVolumePage((prev) => Math.min(prev, routeVolumeTotalPages));
     }, [routeVolumeTotalPages]);
 
+    const buildRouteDetailHref = (row: RouteVolumeMetric): string | null => {
+        if (!row.route_name && !row.url) {
+            return null;
+        }
+
+        const params = new URLSearchParams();
+        if (row.method) {
+            params.set('method', row.method);
+        }
+        if (row.route_name) {
+            params.set('route_name', row.route_name);
+        }
+        if (row.url) {
+            params.set('url', row.url);
+        }
+        params.set('window', timeRange);
+        params.set('type', 'http');
+
+        return `/routes/detail?${params.toString()}`;
+    };
+
     return (
         <DashboardShell
             timeRange={timeRange}
@@ -509,6 +527,13 @@ export default function TransactionsPage() {
                                 {routeVolumePageRows.map((row) => (
                                     <tr
                                         key={`volume-${row.method ?? 'method'}-${row.route_name ?? row.url ?? 'unknown'}`}
+                                        className="route-row"
+                                        onClick={() => {
+                                            const href = buildRouteDetailHref(row);
+                                            if (href) {
+                                                router.push(href);
+                                            }
+                                        }}
                                     >
                                         <td>
                         <span
@@ -558,5 +583,13 @@ export default function TransactionsPage() {
                 )}
             </section>
         </DashboardShell>
+    );
+}
+
+export default function TransactionsPage() {
+    return (
+        <Suspense fallback={null}>
+            <TransactionsPageContent />
+        </Suspense>
     );
 }

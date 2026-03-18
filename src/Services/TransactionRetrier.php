@@ -6,6 +6,7 @@ use Closure;
 use DatabaseTransactions\RetryHelper\Enums\LogLevel;
 use DatabaseTransactions\RetryHelper\Enums\RetryStatus;
 use DatabaseTransactions\RetryHelper\Support\BindingStringifier;
+use DatabaseTransactions\RetryHelper\Support\RequestContext;
 use DatabaseTransactions\RetryHelper\Support\RetryToggle;
 use DatabaseTransactions\RetryHelper\Support\TraceFormatter;
 use DatabaseTransactions\RetryHelper\Support\TransactionRetryLogWriter;
@@ -23,7 +24,6 @@ class TransactionRetrier
      * @param Closure $callback The transaction logic to execute.
      * @param int|null $maxRetries Maximum number of retries. Falls back to configuration.
      * @param int|null $retryDelay Delay between retries in seconds (base for backoff). Falls back to configuration.
-     * @param string|null $logFileName The log file name. Falls back to configuration.
      * @param string $trxLabel The transaction label.
      * @throws RandomException
      * @throws Throwable
@@ -32,7 +32,6 @@ class TransactionRetrier
         Closure $callback,
         ?int $maxRetries = null,
         ?int $retryDelay = null,
-        ?string $logFileName = null,
         string $trxLabel = ''
     ): mixed {
         $config   = function_exists('config') ? config('database-transaction-retry', []) : [];
@@ -45,9 +44,8 @@ class TransactionRetrier
             return DB::transaction($callback);
         }
 
-        $maxRetries  ??= (int) ($config['max_retries'] ?? 3);
-        $retryDelay  ??= (int) ($config['retry_delay'] ?? 2);
-        $logFileName ??= (string) ($config['log_file_name'] ?? 'database/transaction-retries');
+        $maxRetries ??= (int) ($config['max_retries'] ?? 3);
+        $retryDelay ??= (int) ($config['retry_delay'] ?? 2);
 
         $maxRetries = max(1, $maxRetries);
         $retryDelay = max(1, $retryDelay);
@@ -72,7 +70,6 @@ class TransactionRetrier
 
                 static::logOutcome(
                     $logEntries,
-                    $logFileName,
                     null,
                     false,
                     false
@@ -88,14 +85,13 @@ class TransactionRetrier
                     $entry        = static::makeRetryContext($exception, $attempt, $maxRetries, $trxLabel, $retryGroupId);
                     $logEntries[] = $entry;
 
-                    static::logAttempt($entry, $logFileName);
+                    static::logAttempt($entry);
 
                     if ($attempt >= $maxRetries) {
                         $throwable = $exception;
                     } else {
                         static::logOutcome(
                             $logEntries,
-                            $logFileName,
                             null,
                             true,
                             true
@@ -110,7 +106,6 @@ class TransactionRetrier
 
                 static::logOutcome(
                     $logEntries,
-                    $logFileName,
                     $throwable,
                     $exceptionCaught,
                     $shouldRetryError
@@ -201,67 +196,18 @@ class TransactionRetrier
         $context['trace'] = TraceFormatter::snapshot();
 
         try {
-            $context += static::requestSnapshot();
+            $requestData              = RequestContext::snapshot();
+            $context['url']           = $requestData['url'];
+            $context['method']        = $requestData['method'];
+            $context['routeName']     = $requestData['route_name'];
+            $context['userId']        = $requestData['user_id'];
+            $context['userType']      = $requestData['user_type'];
+            $context['authHeaderLen'] = $requestData['auth_header_len'];
         } catch (Throwable) {
             // ignore
         }
 
         return $context;
-    }
-
-    protected static function requestSnapshot(): array
-    {
-        $data = [
-            'url'       => null,
-            'method'    => null,
-            'routeName' => null,
-            'token'     => null,
-            'userId'    => null,
-            'userType'  => null,
-        ];
-
-        if (! function_exists('request') || ! app()->bound('request')) {
-            return $data;
-        }
-
-        $request = request();
-
-        $data['method'] = method_exists($request, 'getMethod') ? $request->getMethod() : null;
-
-        $data['url'] = null;
-        if (method_exists($request, 'route')) {
-            $route = $request->route();
-            if (is_object($route) && method_exists($route, 'uri')) {
-                $data['url'] = $route->uri();
-            }
-        }
-
-        if (method_exists($request, 'route')) {
-            $route = $request->route();
-            if (is_object($route) && method_exists($route, 'getName')) {
-                $data['routeName'] = $route->getName();
-            } elseif (is_string($route)) {
-                $data['routeName'] = $route;
-            }
-        }
-
-        if (method_exists($request, 'header')) {
-            $auth                  = $request->header('authorization');
-            $data['authHeaderLen'] = $auth ? strlen($auth) : null;
-        }
-
-        $user = method_exists($request, 'user') ? $request->user() : null;
-        if (is_object($user)) {
-            $data['userType'] = get_class($user);
-
-            if (method_exists($user, 'getAuthIdentifier')) {
-                $data['userId'] = $user->getAuthIdentifier();
-            } elseif (isset($user->id)) {
-                $data['userId'] = $user->id;
-            }
-        }
-
-        return $data;
     }
 
     protected static function generateRetryGroupId(): string
@@ -294,7 +240,6 @@ class TransactionRetrier
 
     protected static function logOutcome(
         array $logEntries,
-        string $logFileName,
         ?Throwable $throwable,
         bool $exceptionCaught,
         bool $shouldRetryError
@@ -306,7 +251,7 @@ class TransactionRetrier
                 $entry                = $logEntries[count($logEntries) - 1];
                 $entry['retryStatus'] = RetryStatus::Success->value;
 
-                TransactionRetryLogWriter::write($entry, $logFileName, $levels['success']);
+                TransactionRetryLogWriter::write($entry, $levels['success']);
             }
 
             return;
@@ -316,41 +261,20 @@ class TransactionRetrier
             $entry                = $logEntries[count($logEntries) - 1];
             $entry['retryStatus'] = RetryStatus::Failure->value;
 
-            TransactionRetryLogWriter::write($entry, $logFileName, $levels['failure']);
+            TransactionRetryLogWriter::write($entry, $levels['failure']);
         }
 
         // Non-retryable errors rethrow outside this helper; only log when retries are exhausted.
     }
 
-    protected static function logAttempt(array $entry, string $logFileName): void
+    protected static function logAttempt(array $entry): void
     {
-        if (! static::isDatabaseLoggingEnabled()) {
-            return;
-        }
-
         $entry['retryStatus'] = RetryStatus::Attempt->value;
 
         TransactionRetryLogWriter::write(
             $entry,
-            $logFileName,
             static::configuredAttemptLogLevel()
         );
-    }
-
-    protected static function isDatabaseLoggingEnabled(): bool
-    {
-        if (! function_exists('config')) {
-            return false;
-        }
-
-        $logging = config('database-transaction-retry.logging', []);
-        if (! is_array($logging)) {
-            return true;
-        }
-
-        $driver = strtolower(trim((string) ($logging['driver'] ?? 'database')));
-
-        return $driver === '' || $driver === 'database' || $driver === 'db';
     }
 
     protected static function pause(int $seconds): void
