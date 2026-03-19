@@ -10,20 +10,22 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import {useRouter, useSearchParams} from 'next/navigation';
+import {useRouter} from 'next/navigation';
 import DashboardShell from '../components/DashboardShell';
 import {ChartTooltip} from '../components/dashboard-ui';
+import {usePersistentTimeRange} from '../lib/usePersistentTimeRange';
 import {
   apiBase,
   bucketForRange,
   formatBucketLabel,
+  formatDashboardDateTime,
   formatValue,
+  resolveClientTimeZone,
   resolveBucket,
   resolveTimeWindow,
-  timeRanges,
   toCount,
   type Bucket,
-  type TimeRangeValue,
+  timeRanges,
 } from '../lib/dashboard';
 
 type ExceptionMetric = {
@@ -63,14 +65,6 @@ const emptySummaryTotals: ExceptionSummaryTotals = {
   lastSeen: null,
 };
 
-const isValidTimeRange = (value: string | null): value is TimeRangeValue => {
-  if (!value) {
-    return false;
-  }
-
-  return timeRanges.some((range) => range.value === value);
-};
-
 const formatExceptionTitle = (exceptionClass?: string | null): string => {
   const trimmed = exceptionClass?.trim();
   if (!trimmed) {
@@ -99,27 +93,6 @@ const formatErrorCode = (
   }
 
   return sql ?? driver ?? '--';
-};
-
-const formatLastSeen = (value?: string | null, timeZone?: string | null): string => {
-  if (!value) {
-    return '--';
-  }
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return '--';
-  }
-
-  return new Intl.DateTimeFormat(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-    timeZone: timeZone ?? undefined,
-  }).format(date);
 };
 
 const formatHumanDate = (value?: string | null): string => {
@@ -154,9 +127,8 @@ const formatHumanDate = (value?: string | null): string => {
 
 export default function DbExceptionsClient() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [clientTimeZone, setClientTimeZone] = useState<string | null>(null);
-  const [timeRange, setTimeRange] = useState<TimeRangeValue>('24h');
+  const [timeRange, setTimeRange] = usePersistentTimeRange();
   const [exceptions, setExceptions] = useState<ExceptionMetric[]>([]);
   const [exceptionsStatus, setExceptionsStatus] = useState<'idle' | 'loading' | 'error'>(
     'idle'
@@ -185,24 +157,8 @@ export default function DbExceptionsClient() {
   const rangeShortLabel = selectedRange.label;
 
   useEffect(() => {
-    if (typeof Intl === 'undefined') {
-      setClientTimeZone('UTC');
-      return;
-    }
-
-    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    setClientTimeZone(zone || 'UTC');
+    setClientTimeZone(resolveClientTimeZone());
   }, []);
-
-  useEffect(() => {
-    const windowParam = searchParams.get('window');
-
-    if (!isValidTimeRange(windowParam)) {
-      return;
-    }
-
-    setTimeRange((prev) => (prev === windowParam ? prev : windowParam));
-  }, [searchParams]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -384,7 +340,10 @@ export default function DbExceptionsClient() {
         : noExceptionsInWindow
           ? 'No exceptions logged in this window.'
           : null;
-  const summaryLastSeenLabel = formatLastSeen(summaryTotals.lastSeen, clientTimeZone);
+  const summaryLastSeenLabel = formatDashboardDateTime(
+    summaryTotals.lastSeen,
+    clientTimeZone
+  );
   useEffect(() => {
     setExceptionPage((prev) => Math.min(prev, exceptionTotalPages));
   }, [exceptionTotalPages]);

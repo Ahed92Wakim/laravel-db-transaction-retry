@@ -3,6 +3,26 @@
 namespace DatabaseTransactions\RetryHelper\Http\Controllers;
 
 use DatabaseTransactions\RetryHelper\Enums\RetryStatus;
+use DatabaseTransactions\RetryHelper\Http\Resources\RetryEventShowResource;
+use DatabaseTransactions\RetryHelper\Http\Resources\RetryEventsIndexResource;
+use DatabaseTransactions\RetryHelper\Http\Resources\RetryEventsTodayResource;
+use DatabaseTransactions\RetryHelper\Http\Resources\RetryExceptionGroupResource;
+use DatabaseTransactions\RetryHelper\Http\Resources\RetryExceptionsResource;
+use DatabaseTransactions\RetryHelper\Http\Resources\RetryQueriesDurationResource;
+use DatabaseTransactions\RetryHelper\Http\Resources\RetryQueriesResource;
+use DatabaseTransactions\RetryHelper\Http\Resources\RetryQueriesVolumeResource;
+use DatabaseTransactions\RetryHelper\Http\Resources\RetryRequestDurationResource;
+use DatabaseTransactions\RetryHelper\Http\Resources\RetryRequestMetricsResource;
+use DatabaseTransactions\RetryHelper\Http\Resources\RetryRequestRoutesResource;
+use DatabaseTransactions\RetryHelper\Http\Resources\RetryRequestsResource;
+use DatabaseTransactions\RetryHelper\Http\Resources\RetryRoutesResource;
+use DatabaseTransactions\RetryHelper\Http\Resources\RetryRoutesVolumeResource;
+use DatabaseTransactions\RetryHelper\Http\Resources\RetryTrafficResource;
+use DatabaseTransactions\RetryHelper\Models\DbException;
+use DatabaseTransactions\RetryHelper\Models\QueryLog;
+use DatabaseTransactions\RetryHelper\Models\RequestLog;
+use DatabaseTransactions\RetryHelper\Models\SlowTransactionLog;
+use DatabaseTransactions\RetryHelper\Models\TransactionRetryEvent;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -13,8 +33,7 @@ class TransactionRetryEventController
 {
     public function index(Request $request): JsonResponse
     {
-        $table = (string)config('database-transaction-retry.logging.table', 'transaction_retry_events');
-        $query = DB::table($table);
+        $query = $this->retryEventModel()->newQuery();
 
         $filters = [
             'retry_status'   => $request->query('retry_status'),
@@ -52,34 +71,33 @@ class TransactionRetryEventController
 
         $paginator = $query->paginate($perPage, ['*'], 'page', $page);
 
-        return response()->json([
-            'data' => $paginator->items(),
-            'meta' => [
-                'page'     => $paginator->currentPage(),
-                'per_page' => $paginator->perPage(),
-                'total'    => $paginator->total(),
-            ],
-        ]);
+        return (new RetryEventsIndexResource($paginator->items(), [
+            'page'     => $paginator->currentPage(),
+            'per_page' => $paginator->perPage(),
+            'total'    => $paginator->total(),
+        ]))->response($request);
     }
 
     public function show(int|string $id): JsonResponse
     {
-        $table = (string)config('database-transaction-retry.logging.table', 'transaction_retry_events');
-        $row   = DB::table($table)->where('id', $id)->first();
+        $row = $this->retryEventModel()
+            ->newQuery()
+            ->where('id', $id)
+            ->first();
 
         if (!$row) {
             abort(404);
         }
 
-        return response()->json(['data' => $row]);
+        return (new RetryEventShowResource($row))->response();
     }
 
     public function today(Request $request): JsonResponse
     {
-        $table         = (string)config('database-transaction-retry.logging.table', 'transaction_retry_events');
         [$start, $end] = $this->resolveRange($request, 'today');
 
-        $baseQuery = DB::table($table)
+        $baseQuery = $this->retryEventModel()
+            ->newQuery()
             ->whereNotNull('occurred_at')
             ->where('occurred_at', '>=', $start)
             ->where('occurred_at', '<=', $end);
@@ -93,21 +111,18 @@ class TransactionRetryEventController
             ->where('retry_status', RetryStatus::Failure->value)
             ->count();
 
-        return response()->json([
-            'data' => [
-                'date'            => $start->toDateString(),
-                'from'            => $start->toIso8601String(),
-                'to'              => $end->toIso8601String(),
-                'attempt_records' => $attempt,
-                'success_records' => $success,
-                'failure_records' => $failure,
-            ],
-        ]);
+        return (new RetryEventsTodayResource([
+            'date'            => $start->toDateString(),
+            'from'            => $start->toIso8601String(),
+            'to'              => $end->toIso8601String(),
+            'attempt_records' => $attempt,
+            'success_records' => $success,
+            'failure_records' => $failure,
+        ]))->response($request);
     }
 
     public function traffic(Request $request): JsonResponse
     {
-        $table                  = (string)config('database-transaction-retry.logging.table', 'transaction_retry_events');
         [$start, $end, $window] = $this->resolveRange($request, '24h');
         $bucket                 = $this->bucketForWindow($window, $start, $end);
 
@@ -120,7 +135,8 @@ class TransactionRetryEventController
         $successStatus = RetryStatus::Success->value;
         $failureStatus = RetryStatus::Failure->value;
 
-        $rows = DB::table($table)
+        $rows = $this->retryEventModel()
+            ->newQuery()
             ->selectRaw("{$bucketExpression} as bucket")
             ->selectRaw(
                 "SUM(CASE WHEN retry_status = '{$attemptStatus}' THEN 1 ELSE 0 END) as attempts"
@@ -172,20 +188,16 @@ class TransactionRetryEventController
             $cursor = $this->advanceCursor($cursor, $bucket);
         }
 
-        return response()->json([
-            'data' => $series,
-            'meta' => [
-                'from'   => $start->toIso8601String(),
-                'to'     => $end->toIso8601String(),
-                'window' => $window,
-                'bucket' => $bucket,
-            ],
-        ]);
+        return (new RetryTrafficResource($series, [
+            'from'   => $start->toIso8601String(),
+            'to'     => $end->toIso8601String(),
+            'window' => $window,
+            'bucket' => $bucket,
+        ]))->response($request);
     }
 
     public function routes(Request $request): JsonResponse
     {
-        $table                  = (string)config('database-transaction-retry.logging.table', 'transaction_retry_events');
         [$start, $end, $window] = $this->resolveRange($request, '24h');
         $perPageInput           = $request->query('per_page');
         if ($perPageInput === null) {
@@ -198,7 +210,8 @@ class TransactionRetryEventController
         $successStatus = RetryStatus::Success->value;
         $failureStatus = RetryStatus::Failure->value;
 
-        $paginator = DB::table($table)
+        $paginator = $this->retryEventModel()
+            ->newQuery()
 //            ->select(['route_hash', 'method', 'route_name', 'url'])
             ->selectRaw('ANY_VALUE(route_hash) as route_hash')
             ->selectRaw('ANY_VALUE(method) as method')
@@ -226,22 +239,20 @@ class TransactionRetryEventController
             ->orderByDesc('failure')
             ->paginate($perPage, ['*'], 'page', $page);
 
-        return response()->json([
-            'data' => $paginator->items(),
-            'meta' => [
-                'from'     => $start->toIso8601String(),
-                'to'       => $end->toIso8601String(),
-                'window'   => $window,
-                'page'     => $paginator->currentPage(),
-                'per_page' => $paginator->perPage(),
-                'total'    => $paginator->total(),
-            ],
-        ]);
+        return (new RetryRoutesResource($paginator->items(), [
+            'from'     => $start->toIso8601String(),
+            'to'       => $end->toIso8601String(),
+            'window'   => $window,
+            'page'     => $paginator->currentPage(),
+            'per_page' => $paginator->perPage(),
+            'total'    => $paginator->total(),
+        ]))->response($request);
     }
 
     public function routesVolume(Request $request): JsonResponse
     {
-        $logTable               = (string)config('database-transaction-retry.slow_transactions.log_table', 'db_transaction_logs');
+        $logModel               = $this->slowTransactionLogModel();
+        $logTable               = $logModel->getTable();
         $connection             = $this->resolveSlowTransactionConnection();
         [$start, $end, $window] = $this->resolveRange($request, '24h');
         $perPageInput           = $request->query('per_page');
@@ -252,7 +263,8 @@ class TransactionRetryEventController
         $perPage = (int)$perPageInput;
         $page    = max((int)$request->query('page', '1'), 1);
 
-        $baseQuery = $connection->table($logTable)
+        $baseQuery = $logModel
+            ->newQuery()
             ->whereNotNull('completed_at')
             ->where('completed_at', '>=', $start)
             ->where('completed_at', '<=', $end)
@@ -261,9 +273,9 @@ class TransactionRetryEventController
             });
 
         $paginator = (clone $baseQuery)
-            ->selectRaw('ANY_VALUE(http_method) as method')
-            ->selectRaw('ANY_VALUE(route_name) as route_name')
-            ->selectRaw('ANY_VALUE(url) as url')
+            ->selectRaw('http_method as method')
+            ->selectRaw('route_name as route_name')
+            ->selectRaw('url as url')
             ->selectRaw('COUNT(*) as total')
             ->selectRaw('AVG(elapsed_ms) as avg_ms')
             ->selectRaw('SUM(CASE WHEN http_status BETWEEN 100 AND 399 THEN 1 ELSE 0 END) as status_1xx_3xx')
@@ -309,22 +321,20 @@ class TransactionRetryEventController
         });
         $paginator->setCollection($rows);
 
-        return response()->json([
-            'data' => $paginator->items(),
-            'meta' => [
-                'from'     => $start->toIso8601String(),
-                'to'       => $end->toIso8601String(),
-                'window'   => $window,
-                'page'     => $paginator->currentPage(),
-                'per_page' => $paginator->perPage(),
-                'total'    => $paginator->total(),
-            ],
-        ]);
+        return (new RetryRoutesVolumeResource($paginator->items(), [
+            'from'     => $start->toIso8601String(),
+            'to'       => $end->toIso8601String(),
+            'window'   => $window,
+            'page'     => $paginator->currentPage(),
+            'per_page' => $paginator->perPage(),
+            'total'    => $paginator->total(),
+        ]))->response($request);
     }
 
     public function exceptions(Request $request): JsonResponse
     {
-        $table                  = (string)config('database-transaction-retry.exception_logging.table', 'db_exceptions');
+        $exceptionModel         = $this->exceptionLogModel();
+        $table                  = $exceptionModel->getTable();
         $connection             = $this->resolveExceptionLoggingConnection();
         [$start, $end, $window] = $this->resolveRange($request, '24h');
         $perPageInput           = $request->query('per_page');
@@ -341,29 +351,27 @@ class TransactionRetryEventController
         $userKeyExpression = $this->userKeyExpression($driver);
 
         if ($table === '') {
-            return response()->json([
-                'data' => [],
-                'meta' => [
-                    'from'              => $start->toIso8601String(),
-                    'to'                => $end->toIso8601String(),
-                    'window'            => $window,
-                    'bucket'            => $bucket,
-                    'page'              => $page,
-                    'per_page'          => $perPage,
-                    'total'             => 0,
-                    'limit'             => $perPage,
-                    'unique'            => 0,
-                    'users'             => 0,
-                    'total_occurrences' => 0,
-                    'handled'           => 0,
-                    'unhandled'         => 0,
-                    'last_seen'         => null,
-                    'series'            => [],
-                ],
-            ]);
+            return (new RetryExceptionsResource([], [
+                'from'              => $start->toIso8601String(),
+                'to'                => $end->toIso8601String(),
+                'window'            => $window,
+                'bucket'            => $bucket,
+                'page'              => $page,
+                'per_page'          => $perPage,
+                'total'             => 0,
+                'limit'             => $perPage,
+                'unique'            => 0,
+                'users'             => 0,
+                'total_occurrences' => 0,
+                'handled'           => 0,
+                'unhandled'         => 0,
+                'last_seen'         => null,
+                'series'            => [],
+            ]))->response($request);
         }
 
-        $baseQuery = $connection->table($table)
+        $baseQuery = $exceptionModel
+            ->newQuery()
             ->whereNotNull('occurred_at')
             ->where('occurred_at', '>=', $start)
             ->where('occurred_at', '<=', $end);
@@ -433,31 +441,29 @@ class TransactionRetryEventController
         $totalOccurrences = (int)($totals->occurrences ?? 0);
         $lastSeen         = $totals->last_seen ?? null;
 
-        return response()->json([
-            'data' => $rows,
-            'meta' => [
-                'from'              => $start->toIso8601String(),
-                'to'                => $end->toIso8601String(),
-                'window'            => $window,
-                'bucket'            => $bucket,
-                'page'              => $paginator->currentPage(),
-                'per_page'          => $paginator->perPage(),
-                'total'             => $paginator->total(),
-                'limit'             => $paginator->perPage(),
-                'unique'            => $uniqueCount,
-                'users'             => is_numeric($uniqueUsers) ? (int)$uniqueUsers : 0,
-                'total_occurrences' => $totalOccurrences,
-                'handled'           => 0,
-                'unhandled'         => $totalOccurrences,
-                'last_seen'         => $lastSeen,
-                'series'            => $series,
-            ],
-        ]);
+        return (new RetryExceptionsResource($rows, [
+            'from'              => $start->toIso8601String(),
+            'to'                => $end->toIso8601String(),
+            'window'            => $window,
+            'bucket'            => $bucket,
+            'page'              => $paginator->currentPage(),
+            'per_page'          => $paginator->perPage(),
+            'total'             => $paginator->total(),
+            'limit'             => $paginator->perPage(),
+            'unique'            => $uniqueCount,
+            'users'             => is_numeric($uniqueUsers) ? (int)$uniqueUsers : 0,
+            'total_occurrences' => $totalOccurrences,
+            'handled'           => 0,
+            'unhandled'         => $totalOccurrences,
+            'last_seen'         => $lastSeen,
+            'series'            => $series,
+        ]))->response($request);
     }
 
     public function exceptionGroup(Request $request, string $eventHash): JsonResponse
     {
-        $table                  = (string)config('database-transaction-retry.exception_logging.table', 'db_exceptions');
+        $exceptionModel         = $this->exceptionLogModel();
+        $table                  = $exceptionModel->getTable();
         $connection             = $this->resolveExceptionLoggingConnection();
         [$start, $end, $window] = $this->resolveRange($request, '24h');
         $perPageInput           = $request->query('per_page');
@@ -474,25 +480,23 @@ class TransactionRetryEventController
         $labelFormat      = $this->labelFormat($bucket);
 
         if ($table === '') {
-            return response()->json([
-                'data' => [
-                    'group'       => null,
-                    'occurrences' => [],
-                    'series'      => [],
-                ],
-                'meta' => [
-                    'from'     => $start->toIso8601String(),
-                    'to'       => $end->toIso8601String(),
-                    'window'   => $window,
-                    'bucket'   => $bucket,
-                    'page'     => $page,
-                    'per_page' => $perPage,
-                    'total'    => 0,
-                ],
-            ]);
+            return (new RetryExceptionGroupResource([
+                'group'       => null,
+                'occurrences' => [],
+                'series'      => [],
+            ], [
+                'from'     => $start->toIso8601String(),
+                'to'       => $end->toIso8601String(),
+                'window'   => $window,
+                'bucket'   => $bucket,
+                'page'     => $page,
+                'per_page' => $perPage,
+                'total'    => 0,
+            ]))->response($request);
         }
 
-        $baseQuery = $connection->table($table)
+        $baseQuery = $exceptionModel
+            ->newQuery()
             ->whereNotNull('occurred_at')
             ->where('occurred_at', '>=', $start)
             ->where('occurred_at', '<=', $end)
@@ -504,7 +508,7 @@ class TransactionRetryEventController
             ->selectRaw('ANY_VALUE(sql_state) as sql_state')
             ->selectRaw('ANY_VALUE(driver_code) as driver_code')
             ->selectRaw('ANY_VALUE(connection) as connection')
-            ->selectRaw('ANY_VALUE(db_exceptions.sql) as `sql`')
+            ->selectRaw('ANY_VALUE(sql_query) as `sql`')
             ->selectRaw('COUNT(*) as occurrences')
             ->selectRaw('MAX(occurred_at) as last_seen')
             ->first();
@@ -513,7 +517,6 @@ class TransactionRetryEventController
             ->select([
                 'id',
                 'occurred_at',
-                'sql',
                 'raw_sql',
                 'error_message',
                 'method',
@@ -526,6 +529,7 @@ class TransactionRetryEventController
                 'driver_code',
                 'event_hash',
             ])
+            ->selectRaw('sql_query as `sql`')
             ->orderByDesc('occurred_at')
             ->orderByDesc('id')
             ->paginate($perPage, ['*'], 'page', $page);
@@ -558,27 +562,25 @@ class TransactionRetryEventController
             $cursor = $this->advanceCursor($cursor, $bucket);
         }
 
-        return response()->json([
-            'data' => [
-                'group'       => $summary,
-                'occurrences' => $paginator->items(),
-                'series'      => $series,
-            ],
-            'meta' => [
-                'from'     => $start->toIso8601String(),
-                'to'       => $end->toIso8601String(),
-                'window'   => $window,
-                'bucket'   => $bucket,
-                'page'     => $paginator->currentPage(),
-                'per_page' => $paginator->perPage(),
-                'total'    => $paginator->total(),
-            ],
-        ]);
+        return (new RetryExceptionGroupResource([
+            'group'       => $summary,
+            'occurrences' => $paginator->items(),
+            'series'      => $series,
+        ], [
+            'from'     => $start->toIso8601String(),
+            'to'       => $end->toIso8601String(),
+            'window'   => $window,
+            'bucket'   => $bucket,
+            'page'     => $paginator->currentPage(),
+            'per_page' => $paginator->perPage(),
+            'total'    => $paginator->total(),
+        ]))->response($request);
     }
 
     public function queriesVolume(Request $request): JsonResponse
     {
-        $logTable               = (string)config('database-transaction-retry.slow_transactions.log_table', 'db_transaction_logs');
+        $logModel               = $this->slowTransactionLogModel();
+        $logTable               = $logModel->getTable();
         $connection             = $this->resolveSlowTransactionConnection();
         [$start, $end, $window] = $this->resolveRange($request, '24h');
         $bucket                 = $this->bucketForQueryWindow($window, $start, $end);
@@ -588,7 +590,9 @@ class TransactionRetryEventController
         $bucketFormat     = $this->bucketFormat($bucket);
         $labelFormat      = $this->labelFormat($bucket);
 
-        $durationRows = $connection->table("{$logTable} as l")
+        $durationRows = $logModel
+            ->newQuery()
+            ->from("{$logTable} as l")
             ->selectRaw("{$bucketExpression} as bucket")
             ->selectRaw('COUNT(*) as transaction_volume')
             ->selectRaw('COUNT(*) as transaction_count')
@@ -643,21 +647,20 @@ class TransactionRetryEventController
             $cursor = $this->advanceCursor($cursor, $bucket);
         }
 
-        return response()->json([
-            'data' => $series,
-            'meta' => [
-                'from'   => $start->toIso8601String(),
-                'to'     => $end->toIso8601String(),
-                'window' => $window,
-                'bucket' => $bucket,
-            ],
-        ]);
+        return (new RetryQueriesVolumeResource($series, [
+            'from'   => $start->toIso8601String(),
+            'to'     => $end->toIso8601String(),
+            'window' => $window,
+            'bucket' => $bucket,
+        ]))->response($request);
     }
 
     public function queriesDuration(Request $request): JsonResponse
     {
-        $logTable               = (string)config('database-transaction-retry.slow_transactions.log_table', 'db_transaction_logs');
-        $queryTable             = (string)config('database-transaction-retry.slow_transactions.query_table', 'db_transaction_queries');
+        $logModel               = $this->slowTransactionLogModel();
+        $logTable               = $logModel->getTable();
+        $queryModel             = $this->slowQueryLogModel();
+        $queryTable             = $queryModel->getTable();
         $connection             = $this->resolveSlowTransactionConnection();
         [$start, $end, $window] = $this->resolveRange($request, '24h');
         $bucket                 = $this->bucketForQueryWindow($window, $start, $end);
@@ -667,8 +670,11 @@ class TransactionRetryEventController
         $bucketFormat     = $this->bucketFormat($bucket);
         $labelFormat      = $this->labelFormat($bucket);
 
-        $baseQuery = $connection->table("{$queryTable} as q")
-            ->join("{$logTable} as l", 'q.transaction_log_id', '=', 'l.id')
+        $baseQuery = $queryModel
+            ->newQuery()
+            ->from("{$queryTable} as q")
+            ->join("{$logTable} as l", 'q.loggable_id', '=', 'l.id')
+            ->where('q.loggable_type', $logTable)
             ->whereNotNull('l.completed_at')
             ->where('l.completed_at', '>=', $start)
             ->where('l.completed_at', '<=', $end);
@@ -734,21 +740,20 @@ class TransactionRetryEventController
             $cursor = $this->advanceCursor($cursor, $bucket);
         }
 
-        return response()->json([
-            'data' => $series,
-            'meta' => [
-                'from'   => $start->toIso8601String(),
-                'to'     => $end->toIso8601String(),
-                'window' => $window,
-                'bucket' => $bucket,
-            ],
-        ]);
+        return (new RetryQueriesDurationResource($series, [
+            'from'   => $start->toIso8601String(),
+            'to'     => $end->toIso8601String(),
+            'window' => $window,
+            'bucket' => $bucket,
+        ]))->response($request);
     }
 
     public function queries(Request $request): JsonResponse
     {
-        $logTable               = (string)config('database-transaction-retry.slow_transactions.log_table', 'db_transaction_logs');
-        $queryTable             = (string)config('database-transaction-retry.slow_transactions.query_table', 'db_transaction_queries');
+        $logModel               = $this->slowTransactionLogModel();
+        $logTable               = $logModel->getTable();
+        $queryModel             = $this->slowQueryLogModel();
+        $queryTable             = $queryModel->getTable();
         $connection             = $this->resolveSlowTransactionConnection();
         [$start, $end, $window] = $this->resolveRange($request, '24h');
         $bucket                 = $this->bucketForQueryWindow($window, $start, $end);
@@ -758,8 +763,11 @@ class TransactionRetryEventController
         $bucketFormat     = $this->bucketFormat($bucket);
         $labelFormat      = $this->labelFormat($bucket);
 
-        $baseQuery = $connection->table("{$queryTable} as q")
-            ->join("{$logTable} as l", 'q.transaction_log_id', '=', 'l.id')
+        $baseQuery = $queryModel
+            ->newQuery()
+            ->from("{$queryTable} as q")
+            ->join("{$logTable} as l", 'q.loggable_id', '=', 'l.id')
+            ->where('q.loggable_type', $logTable)
             ->whereNotNull('l.completed_at')
             ->where('l.completed_at', '>=', $start)
             ->where('l.completed_at', '<=', $end);
@@ -788,7 +796,9 @@ class TransactionRetryEventController
             ];
         }
 
-        $durationRows = $connection->table("{$logTable} as l")
+        $durationRows = $logModel
+            ->newQuery()
+            ->from("{$logTable} as l")
             ->selectRaw("{$bucketExpression} as bucket")
             ->selectRaw('COUNT(*) as transaction_volume')
             ->selectRaw(
@@ -865,15 +875,325 @@ class TransactionRetryEventController
             $cursor = $this->advanceCursor($cursor, $bucket);
         }
 
-        return response()->json([
-            'data' => $series,
-            'meta' => [
-                'from'   => $start->toIso8601String(),
-                'to'     => $end->toIso8601String(),
-                'window' => $window,
-                'bucket' => $bucket,
-            ],
-        ]);
+        return (new RetryQueriesResource($series, [
+            'from'   => $start->toIso8601String(),
+            'to'     => $end->toIso8601String(),
+            'window' => $window,
+            'bucket' => $bucket,
+        ]))->response($request);
+    }
+
+    public function requests(Request $request): JsonResponse
+    {
+        $query = $this->requestLogModel()->newQuery();
+
+        $type = strtolower((string)$request->query('type', 'http'));
+        $this->applyRequestTypeFilter($query, $type);
+        $this->applyRequestRouteFilters($query, $request);
+
+        $status = $request->query('status');
+        if (is_numeric($status)) {
+            $query->where('http_status', (int)$status);
+        }
+
+        $search = trim((string)$request->query('search', ''));
+        if ($search !== '') {
+            $query->where(function ($builder) use ($search): void {
+                $builder
+                    ->where('route_name', 'like', "%{$search}%")
+                    ->orWhere('url', 'like', "%{$search}%")
+                    ->orWhere('http_method', 'like', "%{$search}%");
+            });
+        }
+
+        $from = $this->parseTimestamp($request->query('from'));
+        if ($from) {
+            $query->where('completed_at', '>=', $from);
+        }
+
+        $to = $this->parseTimestamp($request->query('to'));
+        if ($to) {
+            $query->where('completed_at', '<=', $to);
+        }
+
+        $query->orderByDesc('completed_at')->orderByDesc('id');
+
+        $perPage = min(max((int)$request->query('per_page', '50'), 1), 200);
+        $page    = max((int)$request->query('page', '1'), 1);
+
+        $paginator = $query->paginate($perPage, ['*'], 'page', $page);
+
+        return (new RetryRequestsResource($paginator->items(), [
+            'page'     => $paginator->currentPage(),
+            'per_page' => $paginator->perPage(),
+            'total'    => $paginator->total(),
+        ]))->response($request);
+    }
+
+    public function requestMetrics(Request $request): JsonResponse
+    {
+        $connection             = $this->resolveRequestLoggingConnection();
+        [$start, $end, $window] = $this->resolveRange($request, '24h');
+        $type                   = strtolower((string)$request->query('type', 'http'));
+
+        $driver           = $connection->getDriverName();
+        $bucket           = $this->bucketForRequestChartWindow($window, $start, $end);
+        $bucketExpression = $this->bucketExpression($bucket, $driver, 'completed_at');
+        $bucketFormat     = $this->bucketFormat($bucket);
+        $labelFormat      = $this->labelFormat($bucket);
+
+        $baseQuery = $this->requestLogModel()
+            ->newQuery()
+            ->whereNotNull('completed_at')
+            ->where('completed_at', '>=', $start)
+            ->where('completed_at', '<=', $end);
+        $this->applyRequestTypeFilter($baseQuery, $type);
+        $this->applyRequestRouteFilters($baseQuery, $request);
+
+        $rows = (clone $baseQuery)
+            ->selectRaw("{$bucketExpression} as bucket")
+            ->selectRaw('COUNT(*) as total')
+            ->selectRaw("SUM(CASE WHEN http_status BETWEEN 100 AND 399 OR (http_method = 'CLI' AND http_status IS NULL) THEN 1 ELSE 0 END) as status_1xx_3xx")
+            ->selectRaw('SUM(CASE WHEN http_status BETWEEN 400 AND 499 THEN 1 ELSE 0 END) as status_4xx')
+            ->selectRaw('SUM(CASE WHEN http_status >= 500 THEN 1 ELSE 0 END) as status_5xx')
+            ->groupBy('bucket')
+            ->orderBy('bucket')
+            ->get();
+
+        $metricsByBucket = [];
+        foreach ($rows as $row) {
+            $bucketKey                   = (string)$row->bucket;
+            $metricsByBucket[$bucketKey] = [
+                'total'          => (int)($row->total ?? 0),
+                'status_1xx_3xx' => (int)($row->status_1xx_3xx ?? 0),
+                'status_4xx'     => (int)($row->status_4xx ?? 0),
+                'status_5xx'     => (int)($row->status_5xx ?? 0),
+            ];
+        }
+
+        $seriesStart = $this->alignToBucket($start, $bucket);
+        $seriesEnd   = $this->alignToBucket($end, $bucket);
+
+        $series = [];
+        $cursor = $seriesStart->copy();
+        while ($cursor->lte($seriesEnd)) {
+            $bucketKey = $cursor->format($bucketFormat);
+            $metrics   = $metricsByBucket[$bucketKey] ?? [
+                'total'          => 0,
+                'status_1xx_3xx' => 0,
+                'status_4xx'     => 0,
+                'status_5xx'     => 0,
+            ];
+
+            $series[] = [
+                'time'           => $cursor->format($labelFormat),
+                'timestamp'      => $cursor->toIso8601String(),
+                'total'          => $metrics['total'],
+                'status_1xx_3xx' => $metrics['status_1xx_3xx'],
+                'status_4xx'     => $metrics['status_4xx'],
+                'status_5xx'     => $metrics['status_5xx'],
+            ];
+
+            $cursor = $this->advanceCursor($cursor, $bucket);
+        }
+
+        return (new RetryRequestMetricsResource($series, [
+            'from'   => $start->toIso8601String(),
+            'to'     => $end->toIso8601String(),
+            'window' => $window,
+            'bucket' => $bucket,
+            'type'   => $type,
+        ]))->response($request);
+    }
+
+    public function requestDuration(Request $request): JsonResponse
+    {
+        $connection             = $this->resolveRequestLoggingConnection();
+        [$start, $end, $window] = $this->resolveRange($request, '24h');
+        $type                   = strtolower((string)$request->query('type', 'http'));
+
+        $driver           = $connection->getDriverName();
+        $bucket           = $this->bucketForRequestChartWindow($window, $start, $end);
+        $bucketExpression = $this->bucketExpression($bucket, $driver, 'completed_at');
+        $bucketFormat     = $this->bucketFormat($bucket);
+        $labelFormat      = $this->labelFormat($bucket);
+
+        $baseQuery = $this->requestLogModel()
+            ->newQuery()
+            ->whereNotNull('completed_at')
+            ->where('completed_at', '>=', $start)
+            ->where('completed_at', '<=', $end);
+        $this->applyRequestTypeFilter($baseQuery, $type);
+        $this->applyRequestRouteFilters($baseQuery, $request);
+
+        $rows = (clone $baseQuery)
+            ->selectRaw("{$bucketExpression} as bucket")
+            ->selectRaw('COUNT(*) as count')
+            ->selectRaw('AVG(elapsed_ms) as avg_ms')
+            ->groupBy('bucket')
+            ->orderBy('bucket')
+            ->get();
+
+        $metricsByBucket = [];
+        foreach ($rows as $row) {
+            $bucketKey                   = (string)$row->bucket;
+            $count                       = (int)($row->count ?? 0);
+            $avgMs                       = $count > 0 ? round((float)$row->avg_ms, 2) : 0;
+            $metricsByBucket[$bucketKey] = [
+                'count'  => $count,
+                'avg_ms' => $avgMs,
+                'p95_ms' => 0,
+            ];
+        }
+
+        foreach ($metricsByBucket as $bucketKey => $metrics) {
+            if ($metrics['count'] === 0) {
+                continue;
+            }
+
+            $offset = max((int)ceil($metrics['count'] * 0.95) - 1, 0);
+            $p95Ms  = (clone $baseQuery)
+                ->whereRaw("{$bucketExpression} = ?", [$bucketKey])
+                ->orderBy('elapsed_ms')
+                ->offset($offset)
+                ->limit(1)
+                ->value('elapsed_ms');
+
+            $metricsByBucket[$bucketKey]['p95_ms'] = is_numeric($p95Ms) ? (int)$p95Ms : 0;
+        }
+
+        $seriesStart = $this->alignToBucket($start, $bucket);
+        $seriesEnd   = $this->alignToBucket($end, $bucket);
+
+        $series = [];
+        $cursor = $seriesStart->copy();
+        while ($cursor->lte($seriesEnd)) {
+            $bucketKey = $cursor->format($bucketFormat);
+            $metrics   = $metricsByBucket[$bucketKey] ?? [
+                'count'  => 0,
+                'avg_ms' => 0,
+                'p95_ms' => 0,
+            ];
+
+            $series[] = [
+                'time'      => $cursor->format($labelFormat),
+                'timestamp' => $cursor->toIso8601String(),
+                'count'     => $metrics['count'],
+                'avg_ms'    => $metrics['avg_ms'],
+                'p95_ms'    => $metrics['p95_ms'],
+            ];
+
+            $cursor = $this->advanceCursor($cursor, $bucket);
+        }
+
+        $totalCount = (int)(clone $baseQuery)->count();
+        $avgMs      = $totalCount > 0 ? round((float)(clone $baseQuery)->avg('elapsed_ms'), 2) : 0;
+        $minMs      = $totalCount > 0 ? (int)(clone $baseQuery)->min('elapsed_ms') : 0;
+        $maxMs      = $totalCount > 0 ? (int)(clone $baseQuery)->max('elapsed_ms') : 0;
+        $p95Ms      = 0;
+        if ($totalCount > 0) {
+            $offset = max((int)ceil($totalCount * 0.95) - 1, 0);
+            $p95Ms  = (clone $baseQuery)
+                ->orderBy('elapsed_ms')
+                ->offset($offset)
+                ->limit(1)
+                ->value('elapsed_ms');
+            $p95Ms = is_numeric($p95Ms) ? (int)$p95Ms : 0;
+        }
+
+        return (new RetryRequestDurationResource($series, [
+            'from'   => $start->toIso8601String(),
+            'to'     => $end->toIso8601String(),
+            'window' => $window,
+            'bucket' => $bucket,
+            'type'   => $type,
+            'count'  => $totalCount,
+            'avg_ms' => $avgMs,
+            'min_ms' => $minMs,
+            'max_ms' => $maxMs,
+            'p95_ms' => $p95Ms,
+        ]))->response($request);
+    }
+
+    public function requestRoutes(Request $request): JsonResponse
+    {
+        [$start, $end, $window] = $this->resolveRange($request, '24h');
+        $type                   = strtolower((string)$request->query('type', 'http'));
+        $perPageInput           = $request->query('per_page');
+        if ($perPageInput === null) {
+            $perPageInput = $request->query('limit', '10');
+        }
+        $perPage = max((int)$perPageInput, 1);
+        $page    = max((int)$request->query('page', '1'), 1);
+
+        $baseQuery = $this->requestLogModel()
+            ->newQuery()
+            ->whereNotNull('completed_at')
+            ->where('completed_at', '>=', $start)
+            ->where('completed_at', '<=', $end)
+            ->where(function ($query): void {
+                $query->whereNotNull('route_name')->orWhereNotNull('url');
+            });
+        $this->applyRequestTypeFilter($baseQuery, $type);
+
+        $paginator = (clone $baseQuery)
+            ->selectRaw('ANY_VALUE(http_method) as method')
+            ->selectRaw('ANY_VALUE(route_name) as route_name')
+            ->selectRaw('ANY_VALUE(url) as url')
+            ->selectRaw('COUNT(*) as total')
+            ->selectRaw('AVG(elapsed_ms) as avg_ms')
+            ->selectRaw("SUM(CASE WHEN http_status BETWEEN 100 AND 399 OR (http_method = 'CLI' AND http_status IS NULL) THEN 1 ELSE 0 END) as status_1xx_3xx")
+            ->selectRaw('SUM(CASE WHEN http_status BETWEEN 400 AND 499 THEN 1 ELSE 0 END) as status_4xx')
+            ->selectRaw('SUM(CASE WHEN http_status >= 500 THEN 1 ELSE 0 END) as status_5xx')
+            ->groupBy('http_method', 'route_name', 'url')
+            ->orderByDesc('total')
+            ->paginate($perPage, ['*'], 'page', $page);
+
+        $rows = $paginator->getCollection()->map(function ($row) use ($baseQuery) {
+            $count  = (int)($row->total ?? 0);
+            $offset = max((int)ceil($count * 0.95) - 1, 0);
+
+            $p95 = (clone $baseQuery)
+                ->when($row->method !== null, function ($query) use ($row): void {
+                    $query->where('http_method', $row->method);
+                }, function ($query): void {
+                    $query->whereNull('http_method');
+                })
+                ->when($row->route_name !== null, function ($query) use ($row): void {
+                    $query->where('route_name', $row->route_name);
+                }, function ($query): void {
+                    $query->whereNull('route_name');
+                })
+                ->when($row->url !== null, function ($query) use ($row): void {
+                    $query->where('url', $row->url);
+                }, function ($query): void {
+                    $query->whereNull('url');
+                })
+                ->orderBy('elapsed_ms')
+                ->offset($offset)
+                ->limit(1)
+                ->value('elapsed_ms');
+
+            $row->avg_ms         = is_numeric($row->avg_ms) ? round((float)$row->avg_ms, 2) : 0;
+            $row->p95_ms         = is_numeric($p95) ? (int)$p95 : 0;
+            $row->status_1xx_3xx = (int)($row->status_1xx_3xx ?? 0);
+            $row->status_4xx     = (int)($row->status_4xx ?? 0);
+            $row->status_5xx     = (int)($row->status_5xx ?? 0);
+            $row->total          = (int)($row->total ?? 0);
+
+            return $row;
+        });
+        $paginator->setCollection($rows);
+
+        return (new RetryRequestRoutesResource($paginator->items(), [
+            'from'     => $start->toIso8601String(),
+            'to'       => $end->toIso8601String(),
+            'window'   => $window,
+            'page'     => $paginator->currentPage(),
+            'per_page' => $paginator->perPage(),
+            'total'    => $paginator->total(),
+            'type'     => $type,
+        ]))->response($request);
     }
 
     private function resolveRange(Request $request, string $defaultWindow): array
@@ -954,6 +1274,11 @@ class TransactionRetryEventController
             '30d'   => '8hour',
             default => $this->bucketForWindow($window, $start, $end),
         };
+    }
+
+    private function bucketForRequestChartWindow(string $window, Carbon $start, Carbon $end): string
+    {
+        return $this->bucketForQueryWindow($window, $start, $end);
     }
 
     private function bucketForDuration(Carbon $start, Carbon $end): string
@@ -1083,21 +1408,118 @@ class TransactionRetryEventController
         };
     }
 
+    private function retryEventModel(): TransactionRetryEvent
+    {
+        return TransactionRetryEvent::instance(
+            $this->resolveTableName('database-transaction-retry.logging.table', 'transaction_retry_events')
+        );
+    }
+
+    private function slowTransactionLogModel(): SlowTransactionLog
+    {
+        return SlowTransactionLog::instance(
+            $this->resolveTableName('database-transaction-retry.slow_transactions.log_table', 'db_transaction_logs'),
+            $this->resolveConnectionName('database-transaction-retry.slow_transactions.log_connection')
+        );
+    }
+
+    private function slowQueryLogModel(): QueryLog
+    {
+        return QueryLog::instance(
+            $this->resolveTableName('database-transaction-retry.slow_transactions.query_table', 'db_query_logs'),
+            $this->resolveConnectionName('database-transaction-retry.slow_transactions.log_connection')
+        );
+    }
+
+    private function exceptionLogModel(): DbException
+    {
+        return DbException::instance(
+            $this->resolveTableName('database-transaction-retry.exception_logging.table', 'db_exceptions'),
+            $this->resolveConnectionName('database-transaction-retry.exception_logging.connection')
+        );
+    }
+
+    private function requestLogModel(): RequestLog
+    {
+        return RequestLog::instance(
+            $this->resolveTableName('database-transaction-retry.request_logging.log_table', 'db_request_logs'),
+            $this->resolveConnectionName('database-transaction-retry.request_logging.log_connection')
+        );
+    }
+
+    private function resolveTableName(string $key, string $default): string
+    {
+        $table = trim((string) config($key, $default));
+
+        return $table !== '' ? $table : $default;
+    }
+
+    private function resolveConnectionName(string $key): ?string
+    {
+        $connectionName = trim((string) config($key, ''));
+
+        return $connectionName !== '' ? $connectionName : null;
+    }
+
     private function resolveSlowTransactionConnection()
     {
-        $connectionName = config('database-transaction-retry.slow_transactions.log_connection');
+        $connectionName = $this->resolveConnectionName('database-transaction-retry.slow_transactions.log_connection');
 
-        return is_string($connectionName) && $connectionName !== ''
+        return $connectionName !== null
             ? DB::connection($connectionName)
             : DB::connection();
     }
 
     private function resolveExceptionLoggingConnection()
     {
-        $connectionName = config('database-transaction-retry.exception_logging.connection');
+        $connectionName = $this->resolveConnectionName('database-transaction-retry.exception_logging.connection');
 
-        return is_string($connectionName) && $connectionName !== ''
+        return $connectionName !== null
             ? DB::connection($connectionName)
             : DB::connection();
+    }
+
+    private function resolveRequestLoggingConnection()
+    {
+        $connectionName = $this->resolveConnectionName('database-transaction-retry.request_logging.log_connection');
+
+        return $connectionName !== null
+            ? DB::connection($connectionName)
+            : DB::connection();
+    }
+
+    private function applyRequestTypeFilter($query, string $type): void
+    {
+        if ($type === 'command') {
+            $query->where('http_method', 'CLI');
+
+            return;
+        }
+
+        if ($type === 'http') {
+            $query->where(function ($builder): void {
+                $builder->whereNull('http_method')->orWhere('http_method', '!=', 'CLI');
+            });
+        }
+    }
+
+    private function applyRequestRouteFilters($query, Request $request): void
+    {
+        $method = $request->query('method');
+        if (is_string($method) && $method !== '') {
+            $query->where('http_method', $method);
+        }
+
+        $routeName = $request->query('route_name');
+        if (is_string($routeName) && $routeName !== '') {
+            $query->where('route_name', $routeName);
+
+            return;
+        }
+
+        $url = $request->query('url');
+        if (is_string($url) && $url !== '') {
+            $query->where('url', $url);
+        }
     }
 }

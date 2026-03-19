@@ -21,6 +21,8 @@ const navItems: Array<{
   disabled?: boolean;
 }> = [
     { label: 'Transactions', href: '/transactions' },
+    { label: 'Requests', href: '/requests' },
+    { label: 'Commands', href: '/commands' },
     { label: 'Retry traffic', href: '/retry-traffic' },
     { label: 'DB exceptions', href: '/db-exceptions' },
   ];
@@ -35,6 +37,7 @@ type DashboardShellProps = {
   timeRange: TimeRangeValue;
   onTimeRangeChange: (value: TimeRangeValue) => void;
   rangeLabel: string;
+  pageTitle?: string;
   children: ReactNode;
 };
 
@@ -42,6 +45,7 @@ export default function DashboardShell({
   timeRange,
   onTimeRangeChange,
   rangeLabel,
+  pageTitle,
   children,
 }: DashboardShellProps) {
   const pathname = usePathname();
@@ -143,12 +147,20 @@ export default function DashboardShell({
     });
   }, [pathname]);
 
-  const pageTitle = useMemo(() => {
+  const resolvedPageTitle = useMemo(() => {
+    if (pageTitle) {
+      return pageTitle;
+    }
+
     if (!activeNavItem) return 'Transaction Retry Dashboard';
 
     switch (activeNavItem.href) {
       case '/transactions':
         return 'Transaction Logs';
+      case '/requests':
+        return 'Request Logs';
+      case '/commands':
+        return 'Command Logs';
       case '/retry-traffic':
         return 'Retry Traffic Analysis';
       case '/db-exceptions':
@@ -156,7 +168,7 @@ export default function DashboardShell({
       default:
         return activeNavItem.label;
     }
-  }, [activeNavItem]);
+  }, [activeNavItem, pageTitle]);
 
   return (
     <main className="dashboard-shell">
@@ -180,10 +192,12 @@ export default function DashboardShell({
                 }`;
 
               if (item.href && !item.disabled) {
+                const href = `${item.href}?${new URLSearchParams({window: timeRange}).toString()}`;
+
                 return (
                   <Link
                     key={item.label}
-                    href={item.href}
+                    href={href}
                     className={classes}
                     aria-current={isActive ? 'page' : undefined}
                   >
@@ -253,7 +267,7 @@ export default function DashboardShell({
           {/*<div className="dashboard-header__content">*/}
           <div className="dashboard-header__intro">
             <span className="eyebrow">
-              {pageTitle}
+              {resolvedPageTitle}
             </span>
             {/*<h1 className="dashboard-header__title">Transaction Retry Command Center</h1>*/}
             {/*<p className="dashboard-header__subtitle">*/}

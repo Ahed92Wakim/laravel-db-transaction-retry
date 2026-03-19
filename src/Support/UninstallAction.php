@@ -72,9 +72,10 @@ readonly class UninstallAction
             : base_path('database/migrations');
 
         return [
-            $migrationsPath . '/2025_01_17_000000_create_transaction_retry_events_table.php',
-            $migrationsPath . '/2025_01_17_000001_create_db_transaction_logs_tables.php',
-            $migrationsPath . '/2025_01_17_000002_create_db_exceptions_table.php',
+            $migrationsPath . '/0001_01_01_000000_create_transaction_retry_events_table.php',
+            $migrationsPath . '/0001_01_01_000001_create_db_transaction_logs_tables.php',
+            $migrationsPath . '/0001_01_01_000002_create_db_exceptions_table.php',
+            $migrationsPath . '/0001_01_01_000003_create_db_request_logs_table.php',
         ];
     }
 

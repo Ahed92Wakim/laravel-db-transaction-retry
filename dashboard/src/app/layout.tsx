@@ -1,19 +1,6 @@
 import './globals.css';
-import { Sora, Space_Grotesk } from 'next/font/google';
 import React from 'react';
 import ThemeProvider from './components/ThemeProvider';
-
-const displayFont = Sora({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700'],
-  variable: '--font-display',
-});
-
-const bodyFont = Space_Grotesk({
-  subsets: ['latin'],
-  weight: ['400', '500', '600'],
-  variable: '--font-body',
-});
 
 export const metadata = {
   title: 'Transaction Retry Dashboard',
@@ -43,7 +30,7 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{__html: themeInitScript}} />
       </head>
-      <body className={`${displayFont.variable} ${bodyFont.variable}`}>
+      <body>
         <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>

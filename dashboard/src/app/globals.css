@@ -1,5 +1,7 @@
 :root {
   color-scheme: light;
+  --font-display: "Avenir Next", Avenir, "Segoe UI", sans-serif;
+  --font-body: "Avenir Next", "Segoe UI", sans-serif;
   --bg: #f5f1e8;
   --bg-soft: #f1f6f4;
   --ink: #0f172a;
@@ -641,8 +643,9 @@ h3 {
 }
 
 .chart-summary__stats {
-  display: grid;
-  gap: 0.4rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.2rem;
   font-size: 0.8rem;
   color: var(--muted);
   min-width: 160px;
@@ -656,6 +659,30 @@ h3 {
 
 .chart-summary__stat strong {
   margin-left: auto;
+}
+
+.chart-summary__stat--clickable {
+  cursor: pointer;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.chart-summary__stat--clickable:hover {
+  background: rgba(15, 23, 42, 0.06);
+}
+
+.chart-summary__stat--inactive {
+  opacity: 0.4;
+}
+
+.chart-summary__stat--inactive:hover {
+  background: transparent;
+}
+
+:root[data-theme="dark"] .chart-summary__stat--clickable:hover {
+  background: rgba(148, 163, 184, 0.1);
 }
 
 .chart-summary__ranges {
@@ -744,6 +771,13 @@ h3 {
   align-items: center;
   gap: 0.4rem;
   margin-top: 0.25rem;
+}
+
+.tooltip__item--total {
+  margin-top: 0.45rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  font-weight: 600;
 }
 
 .tooltip__dot {
@@ -935,12 +969,73 @@ h3 {
   flex: 0 0 auto;
 }
 
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.status-pill--ok {
+  background: rgba(43, 165, 154, 0.12);
+  border-color: rgba(43, 165, 154, 0.32);
+  color: #18645d;
+}
+
+.status-pill--warn {
+  background: rgba(249, 115, 22, 0.14);
+  border-color: rgba(249, 115, 22, 0.35);
+  color: #8a4b0f;
+}
+
+.status-pill--error {
+  background: rgba(239, 68, 68, 0.16);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #8b1e1e;
+}
+
+.status-pill--muted {
+  color: var(--muted);
+}
+
+:root[data-theme="dark"] .status-pill {
+  background: rgba(15, 23, 42, 0.55);
+}
+
+:root[data-theme="dark"] .status-pill--ok {
+  background: rgba(71, 209, 197, 0.22);
+  border-color: rgba(71, 209, 197, 0.4);
+  color: #b7f3ec;
+}
+
+:root[data-theme="dark"] .status-pill--warn {
+  background: rgba(251, 146, 60, 0.2);
+  border-color: rgba(251, 146, 60, 0.4);
+  color: #fde3c5;
+}
+
+:root[data-theme="dark"] .status-pill--error {
+  background: rgba(248, 113, 113, 0.22);
+  border-color: rgba(248, 113, 113, 0.4);
+  color: #ffd2d2;
+}
+
 .route-table tbody tr:hover {
   background: rgba(255, 107, 45, 0.08);
 }
 
 :root[data-theme="dark"] .route-table tbody tr:hover {
   background: rgba(255, 107, 45, 0.12);
+}
+
+.route-row {
+  cursor: pointer;
 }
 
 .route-table__header--exceptions {
@@ -1126,6 +1221,70 @@ h3 {
   margin-top: 1.2rem;
   display: grid;
   gap: 1.4rem;
+}
+
+.route-detail-page {
+  margin-top: 1.2rem;
+  display: grid;
+  gap: 1.6rem;
+}
+
+.route-hero {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.route-hero__eyebrow {
+  margin: 0;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--muted);
+}
+
+.route-hero__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.route-hero__title {
+  margin: 0;
+  font-size: 1.6rem;
+  color: var(--card-ink);
+}
+
+.route-hero__subtitle {
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.route-hero__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.route-hero__meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.6);
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+:root[data-theme="dark"] .route-hero__meta-item {
+  background: rgba(15, 23, 42, 0.55);
 }
 
 .exception-hero {

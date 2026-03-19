@@ -26,7 +26,8 @@ Resilient database transactions for Laravel applications that need to gracefully
 - Exponential backoff with jitter between attempts to reduce stampedes under load.
 - Retry events persisted to `transaction_retry_events` with request metadata, SQL, bindings, connection information, and stack traces.
 - Captures exception classes and codes, making it easy to see exactly what triggered the retry.
-- Optional transaction labels and log file names (when using the log driver) for easier traceability across microservices and jobs.
+- Request-level query logging stored in `db_request_logs`, with each query stored in `db_query_logs`.
+- Optional transaction labels for easier traceability across microservices and jobs.
 - Laravel package auto-discovery; no manual service provider registration required.
 
 ## Installation
@@ -51,7 +52,6 @@ $order = Retry::runWithRetry(
     },
     maxRetries: 4,
     retryDelay: 1,
-    logFileName: 'database/transaction-retries/orders',
     trxLabel: 'order-create'
 );
 ```
@@ -90,7 +90,6 @@ The macro is registered automatically when the service provider boots, and sets 
 | ------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | `maxRetries`  | Config (`default: 3`)                     | Total number of attempts (initial try + retries).                                                                   |
 | `retryDelay`  | Config (`default: 2s`)                    | Base delay (seconds). Actual wait uses exponential backoff with ±25% jitter.                                        |
-| `logFileName` | Config (`default: database/transaction-retries`) | Used only when `logging.driver=log`. Written to `storage/logs/{Y-m-d}/{logFileName}.log`. Can point to subdirectories.                                   |
 | `trxLabel`    | `''`                                      | Optional label injected into log titles and stored in the service container as `tx.label` for downstream consumers. |
 
 Call the helper anywhere you would normally open a transaction—controllers, jobs, console commands, or domain services.
@@ -107,16 +106,16 @@ You can also run `php artisan db-transaction-retry:install` to publish the confi
 
 - Key options (`config/database-transaction-retry.php`):
 
-- `max_retries`, `retry_delay`, and `log_file_name` set the package-wide defaults when you omit parameters. Each respects environment variables (`DB_TRANSACTION_RETRY_MAX_RETRIES`, `DB_TRANSACTION_RETRY_DELAY`, `DB_TRANSACTION_RETRY_LOG_FILE`). `log_file_name` only applies when `logging.driver=log`.
+- `max_retries` and `retry_delay` set the package-wide defaults when you omit parameters. Each respects environment variables (`DB_TRANSACTION_RETRY_MAX_RETRIES`, `DB_TRANSACTION_RETRY_DELAY`).
 - `state_path` controls where the retry toggle marker file is stored (defaults to `storage_path('database-transaction-retry/runtime')`). Set `DB_TRANSACTION_RETRY_STATE_PATH` if your deployment requires a custom writable location.
 - `lock_wait_timeout_seconds` lets you override `innodb_lock_wait_timeout` per attempt; set the matching environment variable (`DB_TRANSACTION_RETRY_LOCK_WAIT_TIMEOUT`) to control the session value or leave null to use the database default.
-- `logging.driver` selects where retry events are stored: `database` (default) or `log`.
 - `logging.table` lets you override the database table name (defaults to `transaction_retry_events`).
-- `logging.channel` points at any existing Laravel log channel so you can reuse stacks or third-party drivers when using the log driver.
 - `logging.levels.success` / `logging.levels.failure` / `logging.levels.attempt` let you tune the severity emitted for successful retries, per-attempt entries, and exhausted attempts (defaults: `warning`, `warning`, and `error`).
 - `retryable_exceptions.sql_states` lists SQLSTATE codes that should trigger a retry (defaults to `40001`).
 - `retryable_exceptions.driver_error_codes` lists driver-specific error codes (defaults to `1213` deadlocks and `1205` lock wait timeouts). Including `1205` not only enables retries but also activates the optional session lock wait timeout override when configured.
 - `retryable_exceptions.classes` lets you specify fully-qualified exception class names that should always be retried.
+- `request_logging.enabled` enables or disables request logging (requests with at least one query).
+- `request_logging.log_table` and `request_logging.query_table` let you override the request and query log tables (defaults: `db_request_logs`, `db_query_logs`).
 - `dashboard.path` sets the UI path (defaults to `/transaction-retry`).
 - `dashboard.middleware` lets you attach middleware to the dashboard UI route (for example `web`, `auth`, or `can:viewTransactionRetryDashboard`).
 - `api.prefix` sets the JSON API prefix (defaults to `/api/transaction-retry`).
@@ -138,7 +137,7 @@ php artisan vendor:publish --tag=database-transaction-retry-migrations
 php artisan migrate
 ```
 
-If you switch to `logging.driver=log`, the migration is optional.
+The migrations create the `transaction_retry_events`, `db_transaction_logs`, `db_query_logs`, `db_request_logs`, and `db_exceptions` tables by default.
 
 ## Dashboard (Next.js UI)
 
@@ -146,6 +145,8 @@ The package ships a static Next.js dashboard that is published into your Laravel
 
 - UI: `/transaction-retry`
 - API: `/api/transaction-retry/events`
+
+Route tables in the dashboard link to a per-route detail view. The request metrics endpoints (`/metrics/requests`, `/metrics/requests-duration`, and `/requests`) accept optional `method`, `route_name`, and `url` filters to scope data to a single route.
 
 ### Securing the dashboard
 
@@ -223,7 +224,7 @@ dashboard service provider from `bootstrap/providers.php` when available. It del
 
 - `config/database-transaction-retry.php`
 - `app/Providers/TransactionRetryDashboardServiceProvider.php`
-- Published migrations for the retry events and exception tables
+- Published migrations for the retry events, transaction logs, request logs, query logs, and exception tables
 - The published dashboard assets under `public/vendor/laravel-db-transaction-retry/{dashboard.path}`
 
 Database tables are not dropped automatically. If you want to remove them, drop the
@@ -238,6 +239,7 @@ use Illuminate\Support\Facades\Schedule;
 
 Schedule::command('db-transaction-retry:roll-partitions --hours=24 --table=transaction_retry_events')->hourly();
 Schedule::command('db-transaction-retry:roll-partitions --hours=24 --table=db_transaction_logs')->hourly();
+Schedule::command('db-transaction-retry:roll-partitions --hours=24 --table=db_request_logs')->hourly();
 Schedule::command('db-transaction-retry:roll-partitions --hours=24 --table=db_exceptions')->hourly();
 ```
 
@@ -258,10 +260,11 @@ When `lock_wait_timeout_seconds` is configured, the retrier issues `SET SESSION 
 
 ## Retry Event Storage
 
-By default, retry events are stored in the `transaction_retry_events` table. Each retryable exception attempt is persisted, plus a final success or failure entry once the retrier finishes. If you prefer file logging, set `logging.driver=log` and optionally choose a log channel:
+Retry events are stored in the `transaction_retry_events` table. Each retryable exception attempt is persisted, plus a final success or failure entry once the retrier finishes:
 
-- Success after retries → a warning entry titled `"[trxLabel] [DATABASE TRANSACTION RETRY - SUCCESS] ExceptionClass (Codes) After (Attempts: x/y) - Warning"`.
-- Failure after exhausting retries → an error entry titled `"[trxLabel] [DATABASE TRANSACTION RETRY - FAILED] ExceptionClass (Codes) After (Attempts: x/y) - Error"`.
+- Success after retries → a row with `retry_status=success`.
+- Failure after exhausting retries → a row with `retry_status=failure`.
+- Intermediate retryable failures → rows with `retry_status=attempt`.
 
 Each retry event stores:
 
@@ -269,8 +272,6 @@ Each retry event stores:
 - A retry group ID to correlate attempts and the final outcome for a single transaction.
 - Exception class, SQLSTATE, driver error code, connection name, SQL, bindings, resolved raw SQL, and PDO error info when available.
 - A compacted stack trace and request URL, method, authorization header length, and authenticated user ID/type (UUID or integer) when the request helper is bound.
-
-Set `logFileName` to segment logs by feature or workload (e.g., `logFileName: 'database/queues/payments'`) when using the log driver.
 
 ## Runtime Toggle
 
@@ -289,7 +290,7 @@ The commands write a small marker file inside the package (`storage/runtime/retr
 
 The package exposes dedicated support classes you can reuse in your own instrumentation:
 
-- `DatabaseTransactions\RetryHelper\Support\TransactionRetryLogWriter` writes retry events to the configured driver (database or log).
+- `DatabaseTransactions\RetryHelper\Support\TransactionRetryLogWriter` writes retry events to the retry events table.
 - `DatabaseTransactions\RetryHelper\Support\TraceFormatter` converts debug backtraces into log-friendly arrays.
 - `DatabaseTransactions\RetryHelper\Support\BindingStringifier` sanitises query bindings before logging.
 
@@ -303,7 +304,7 @@ Run the test suite with:
 composer test
 ```
 
-Tests cover the retry flow, logging behaviour, exponential backoff jitter, and non-retryable scenarios using fakes for the database and logger managers.
+Tests cover the retry flow, database event persistence, exponential backoff jitter, and non-retryable scenarios using database fakes.
 
 ## Requirements
 

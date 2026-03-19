@@ -11,6 +11,21 @@ export const timeRanges = [
 export const routeMetricsLimit = 50;
 
 export type TimeRangeValue = (typeof timeRanges)[number]['value'];
+export const defaultTimeRange: TimeRangeValue = '24h';
+
+export const isValidTimeRange = (
+  value: string | null | undefined
+): value is TimeRangeValue => {
+  if (!value) {
+    return false;
+  }
+
+  return timeRanges.some((range) => range.value === value);
+};
+
+export const resolveTimeRange = (
+  value: string | null | undefined
+): TimeRangeValue => (isValidTimeRange(value) ? value : defaultTimeRange);
 
 export type Bucket =
   | 'minute'
@@ -107,18 +122,53 @@ export const bucketForRange = (range: TimeRangeValue): Bucket => {
   }
 };
 
+const parseDateValue = (value: string | null | undefined): Date | null => {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+export const resolveClientTimeZone = (): string => {
+  if (typeof Intl === 'undefined') {
+    return 'UTC';
+  }
+
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+};
+
+export const formatDashboardDateTime = (
+  value: string | null | undefined,
+  timeZone?: string | null,
+  fallback = '--'
+): string => {
+  const date = parseDateValue(value);
+  if (!date) {
+    return fallback;
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: timeZone ?? undefined,
+  }).format(date);
+};
+
 export const formatBucketLabel = (
   timestamp: string | undefined,
   bucket: Bucket | null,
   timeZone: string | null,
   fallback: string
 ): string => {
-  if (!timestamp || !bucket || !timeZone) {
-    return fallback;
-  }
-
-  const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) {
+  const date = parseDateValue(timestamp);
+  if (!date || !bucket) {
     return fallback;
   }
 
@@ -127,7 +177,10 @@ export const formatBucketLabel = (
       ? {month: 'short', day: '2-digit'}
       : {hour: '2-digit', minute: '2-digit', hour12: false};
 
-  return new Intl.DateTimeFormat(undefined, {...options, timeZone}).format(date);
+  return new Intl.DateTimeFormat(undefined, {
+    ...options,
+    timeZone: timeZone ?? undefined,
+  }).format(date);
 };
 
 export const resolveTimeWindow = (range: TimeRangeValue) => {
@@ -220,12 +273,8 @@ export const formatTooltipTimestamp = (
   timeZone: string | null | undefined,
   fallback: string
 ): string => {
-  if (!timestamp || !timeZone) {
-    return fallback;
-  }
-
-  const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) {
+  const date = parseDateValue(timestamp);
+  if (!date) {
     return fallback;
   }
 
@@ -236,7 +285,7 @@ export const formatTooltipTimestamp = (
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
-    timeZone,
+    timeZone: timeZone ?? undefined,
     timeZoneName: 'short',
   }).format(date);
 };

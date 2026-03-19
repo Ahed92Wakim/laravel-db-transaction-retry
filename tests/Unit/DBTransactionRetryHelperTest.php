@@ -18,22 +18,14 @@ use Illuminate\Container\Container;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Traits\Macroable;
-use Psr\Log\AbstractLogger;
 use Symfony\Component\Console\Tester\CommandTester;
 
 beforeEach(function (): void {
     FakeDatabaseManager::flushMacros();
 
-    $this->database   = new FakeDatabaseManager();
-    $this->logManager = new FakeLogManager();
+    $this->database = new FakeDatabaseManager();
 
     $this->app->instance('db', $this->database);
-    $this->app->instance('log', $this->logManager);
-
-    Container::getInstance()->make('config')->set(
-        'database-transaction-retry.logging.driver',
-        'log'
-    );
 
     SleepSpy::reset();
     RetryToggle::enable();
@@ -44,7 +36,7 @@ test('returns callback result without retries', function (): void {
 
     expect($result)->toBe('done');
     expect($this->database->transactionCalls)->toBe(1);
-    expect($this->logManager->records)->toBe([]);
+    expect(retryEventRows($this->database))->toBe([]);
     expect(SleepSpy::$delays)->toBe([]);
 });
 
@@ -70,7 +62,7 @@ test('bypasses retry logic when disabled', function (): void {
 
     expect($attempts)->toBe(1);
     expect($this->database->transactionCalls)->toBe(1);
-    expect($this->logManager->records)->toBe([]);
+    expect(retryEventRows($this->database))->toBe([]);
     expect(SleepSpy::$delays)->toBe([]);
 });
 
@@ -96,12 +88,12 @@ test('bypasses retry logic when persisted marker exists', function (): void {
 
     expect($attempts)->toBe(1);
     expect($this->database->transactionCalls)->toBe(1);
-    expect($this->logManager->records)->toBe([]);
+    expect(retryEventRows($this->database))->toBe([]);
     expect(SleepSpy::$delays)->toBe([]);
     expect(is_file(RetryToggle::markerPath()))->toBeFalse();
 });
 
-test('retries on deadlock and logs warning', function (): void {
+test('retries on deadlock and persists attempt and success rows', function (): void {
     $attempts = 0;
 
     $result = TransactionRetrier::runWithRetry(function () use (&$attempts) {
@@ -119,26 +111,27 @@ test('retries on deadlock and logs warning', function (): void {
     expect(SleepSpy::$delays)->toHaveCount(1);
     expect(SleepSpy::$delays[0])->toBe(1);
 
-    expect($this->logManager->records)->toHaveCount(1);
-    $record = $this->logManager->records[0];
+    $rows = retryEventRows($this->database);
+    expect($rows)->toHaveCount(2);
 
-    expect($record['level'])->toBe('warning');
-    expect($record['message'])->toBe('[orders] [DATABASE TRANSACTION RETRY - SUCCESS] Illuminate\Database\QueryException (SQLSTATE 40001, Driver 1213) After (Attempts: 1/3) - Warning');
-    expect($record['context']['attempt'])->toBe(1);
-    expect($record['context']['maxRetries'])->toBe(3);
-    expect($record['context']['trxLabel'])->toBe('orders');
-    expect($record['context']['retryGroupId'])->toBeString()->not->toBe('');
-    expect($record['context']['exceptionClass'])->toBe(QueryException::class);
-    expect($record['context']['sqlState'])->toBe('40001');
-    expect($record['context']['driverCode'])->toBe(1213);
+    $attemptRow = $rows[0]['row'];
+    expect($attemptRow['retry_status'])->toBe('attempt');
+    expect($attemptRow['log_level'])->toBe('warning');
+    expect($attemptRow['attempt'])->toBe(1);
+    expect($attemptRow['max_retries'])->toBe(3);
+    expect($attemptRow['trx_label'])->toBe('orders');
+    expect($attemptRow['retry_group_id'])->toBeString()->not->toBe('');
+    expect($attemptRow['exception_class'])->toBe(QueryException::class);
+    expect($attemptRow['sql_state'])->toBe('40001');
+    expect($attemptRow['driver_code'])->toBe(1213);
+
+    $successRow = $rows[1]['row'];
+    expect($successRow['retry_status'])->toBe('success');
+    expect($successRow['log_level'])->toBe('warning');
+    expect($successRow['retry_group_id'])->toBe($attemptRow['retry_group_id']);
 });
 
-test('persists retry event to database when database driver configured', function (): void {
-    Container::getInstance()->make('config')->set(
-        'database-transaction-retry.logging.driver',
-        'database'
-    );
-
+test('persists retry events to database', function (): void {
     $attempts = 0;
 
     $result = TransactionRetrier::runWithRetry(function () use (&$attempts) {
@@ -189,11 +182,10 @@ test('uses configured success log level for retry logging', function (): void {
     }, maxRetries: 2, retryDelay: 1, trxLabel: 'level-success');
 
     expect($result)->toBe('ok');
-    expect($this->logManager->records)->toHaveCount(1);
-    $record = $this->logManager->records[0];
-
-    expect($record['level'])->toBe('notice');
-    expect($record['message'])->toContain('Notice');
+    $rows = retryEventRows($this->database);
+    expect($rows)->toHaveCount(2);
+    expect($rows[0]['row']['log_level'])->toBe('warning');
+    expect($rows[1]['row']['log_level'])->toBe('notice');
 });
 
 test('uses configured failure log level for retry logging', function (): void {
@@ -212,14 +204,14 @@ test('uses configured failure log level for retry logging', function (): void {
         expect($exception->errorInfo[1])->toBe(1213);
     }
 
-    expect($this->logManager->records)->toHaveCount(1);
-    $record = $this->logManager->records[0];
-
-    expect($record['level'])->toBe('critical');
-    expect($record['message'])->toContain('Critical');
+    $rows = retryEventRows($this->database);
+    expect($rows)->toHaveCount(3);
+    expect($rows[0]['row']['log_level'])->toBe('warning');
+    expect($rows[1]['row']['log_level'])->toBe('warning');
+    expect($rows[2]['row']['log_level'])->toBe('critical');
 });
 
-test('throws after max retries and logs error', function (): void {
+test('throws after max retries and persists failure row', function (): void {
     try {
         TransactionRetrier::runWithRetry(function (): void {
             throw makeQueryException(1213);
@@ -236,17 +228,18 @@ test('throws after max retries and logs error', function (): void {
     expect(SleepSpy::$delays[1])->toBeGreaterThanOrEqual(1);
     expect(SleepSpy::$delays[1])->toBeLessThanOrEqual(3);
 
-    expect($this->logManager->records)->toHaveCount(1);
-    $record = $this->logManager->records[0];
+    $rows = retryEventRows($this->database);
+    expect($rows)->toHaveCount(4);
 
-    expect($record['level'])->toBe('error');
-    expect($record['message'])->toBe('[payments] [DATABASE TRANSACTION RETRY - FAILED] Illuminate\Database\QueryException (SQLSTATE 40001, Driver 1213) After (Attempts: 3/3) - Error');
-    expect($record['context']['attempt'])->toBe(3);
-    expect($record['context']['maxRetries'])->toBe(3);
-    expect($record['context']['trxLabel'])->toBe('payments');
-    expect($record['context']['exceptionClass'])->toBe(QueryException::class);
-    expect($record['context']['sqlState'])->toBe('40001');
-    expect($record['context']['driverCode'])->toBe(1213);
+    $failureRow = $rows[3]['row'];
+    expect($failureRow['retry_status'])->toBe('failure');
+    expect($failureRow['log_level'])->toBe('error');
+    expect($failureRow['attempt'])->toBe(3);
+    expect($failureRow['max_retries'])->toBe(3);
+    expect($failureRow['trx_label'])->toBe('payments');
+    expect($failureRow['exception_class'])->toBe(QueryException::class);
+    expect($failureRow['sql_state'])->toBe('40001');
+    expect($failureRow['driver_code'])->toBe(1213);
 });
 
 test('db facade macro delegates to transaction retrier', function (): void {
@@ -281,7 +274,7 @@ test('does not retry for non deadlock query exception', function (): void {
     }
 
     expect($this->database->transactionCalls)->toBe(1);
-    expect($this->logManager->records)->toBe([]);
+    expect(retryEventRows($this->database))->toBe([]);
     expect(SleepSpy::$delays)->toBe([]);
 });
 
@@ -308,7 +301,7 @@ test('does not retry when deadlock retry disabled', function (): void {
     expect($attempts)->toBe(1);
     expect($this->database->transactionCalls)->toBe(1);
     expect(SleepSpy::$delays)->toBe([]);
-    expect($this->logManager->records)->toBe([]);
+    expect(retryEventRows($this->database))->toBe([]);
 });
 
 test('retries on lock wait timeout and applies configured session timeout', function (): void {
@@ -343,11 +336,10 @@ test('retries on lock wait timeout and applies configured session timeout', func
     expect($statement)->toBe('SET SESSION innodb_lock_wait_timeout = ?');
     expect($bindings)->toBe([7]);
 
-    $record = $this->logManager->records[0];
-    expect($record['context']['driverCode'])->toBe(1205);
-    expect($record['context']['sqlState'])->toBe('HY000');
-    expect($record['message'])->toContain('Driver 1205');
-    expect($record['message'])->toContain('SQLSTATE HY000');
+    $rows = retryEventRows($this->database);
+    expect($rows)->toHaveCount(2);
+    expect($rows[0]['row']['driver_code'])->toBe(1205);
+    expect($rows[0]['row']['sql_state'])->toBe('HY000');
 });
 
 test('does not change session timeout when lock wait retry disabled', function (): void {
@@ -389,11 +381,10 @@ test('retries when SQLSTATE indicates deadlock even without driver code', functi
 
     expect($result)->toBe('ok');
     expect($this->database->transactionCalls)->toBe(2);
-    expect($this->logManager->records)->toHaveCount(1);
-    $record = $this->logManager->records[0];
-
-    expect($record['context']['sqlState'])->toBe('40001');
-    expect($record['context']['driverCode'])->toBeNull();
+    $rows = retryEventRows($this->database);
+    expect($rows)->toHaveCount(2);
+    expect($rows[0]['row']['sql_state'])->toBe('40001');
+    expect($rows[0]['row']['driver_code'])->toBeNull();
 });
 
 test('binds transaction label into container during execution', function (): void {
@@ -557,6 +548,14 @@ function makeSqlStateOnlyQueryException(string|int $sqlState = 40001): QueryExce
     );
 }
 
+function retryEventRows(FakeDatabaseManager $database): array
+{
+    return array_values(array_filter(
+        $database->insertedRows,
+        static fn (array $row): bool => $row['table'] === 'transaction_retry_events'
+    ));
+}
+
 final class FakeDatabaseManager
 {
     use Macroable;
@@ -666,32 +665,6 @@ final class FakeTable
         $this->manager->insertedRows[] = ['table' => $this->table, 'row' => $row];
 
         return true;
-    }
-}
-
-final class FakeLogManager
-{
-    public array $records = [];
-
-    public function build(array $config): FakeLogger
-    {
-        return new FakeLogger($this);
-    }
-}
-
-final class FakeLogger extends AbstractLogger
-{
-    public function __construct(private FakeLogManager $manager)
-    {
-    }
-
-    public function log($level, $message, array $context = []): void
-    {
-        $this->manager->records[] = [
-            'level'   => strtolower((string) $level),
-            'message' => (string) $message,
-            'context' => $context,
-        ];
     }
 }
 
