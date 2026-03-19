@@ -212,6 +212,62 @@ test('request monitor ignores package dashboard and api requests', function (): 
     expect($database->insertedRows)->toBe([]);
 });
 
+test('request monitor does not recurse while resolving the authenticated user', function (): void {
+    $database = new FakeRequestDatabaseManager();
+    $this->app->instance('db', $database);
+
+    $monitor    = null;
+    $connection = $database->connection();
+
+    $request = new FakeRequestLogRequest(
+        path: 'orders/9',
+        userResolver: function () use (&$monitor, $connection): mixed {
+            if (! $monitor instanceof RequestMonitor) {
+                return null;
+            }
+
+            $monitor->handleQueryExecuted(new QueryExecuted(
+                'select * from users where id = ?',
+                [42],
+                3.5,
+                $connection
+            ));
+
+            return null;
+        }
+    );
+
+    $this->app->instance('request', $request);
+
+    $monitor = new RequestMonitor([
+        'enabled'        => true,
+        'log_table'      => 'db_request_logs',
+        'query_table'    => 'db_query_logs',
+        'log_connection' => null,
+    ]);
+
+    $monitor->handleQueryExecuted(new QueryExecuted(
+        'select * from orders where id = ?',
+        [9],
+        8.2,
+        $connection
+    ));
+
+    $monitor->handleRequestHandled(new RequestHandled(
+        $request,
+        new FakeRequestLogResponse(200)
+    ));
+
+    $queryRows = array_values(array_filter(
+        $database->insertedRows,
+        static fn (array $row): bool => $row['table'] === 'db_query_logs'
+    ));
+
+    expect($request->userCallCount)->toBe(1);
+    expect($queryRows)->toHaveCount(1);
+    expect($queryRows[0]['row']['sql_query'])->toBe('select * from orders where id = ?');
+});
+
 final class FakeRequestDatabaseManager
 {
     /** @var list<array{table:string,row:array}> */
@@ -316,12 +372,15 @@ final class FakeRequestTable
 
 final class FakeRequestLogRequest
 {
+    public int $userCallCount = 0;
+
     public function __construct(
         private array $server = [],
         private string $method = 'GET',
         private ?FakeRoute $route = null,
         private ?string $ip = '127.0.0.1',
-        private string $path = ''
+        private string $path = '',
+        private mixed $userResolver = null
     ) {
     }
 
@@ -352,6 +411,12 @@ final class FakeRequestLogRequest
 
     public function user(): mixed
     {
+        $this->userCallCount++;
+
+        if (is_callable($this->userResolver)) {
+            return ($this->userResolver)();
+        }
+
         return null;
     }
 }
