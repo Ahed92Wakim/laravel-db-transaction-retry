@@ -14,9 +14,10 @@ class RequestMonitor
     private bool $enabled;
     private string $logTable;
     private string $queryTable;
-    private ?array $context        = null;
-    private ?array $pendingCommand = null;
-    private bool $isPersisting     = false;
+    private ?array $context         = null;
+    private ?array $pendingCommand  = null;
+    private bool $isPersisting      = false;
+    private bool $isBuildingContext = false;
     /** @var list<string> */
     private array $ignoreTables = [];
     private RequestLogWriter $writer;
@@ -68,7 +69,7 @@ class RequestMonitor
 
     public function handleQueryExecuted(QueryExecuted $event): void
     {
-        if (! $this->enabled || $this->isPersisting) {
+        if (! $this->enabled || $this->isPersisting || $this->isBuildingContext) {
             return;
         }
 
@@ -81,7 +82,13 @@ class RequestMonitor
         }
 
         if ($this->context === null) {
-            $this->context = $this->buildContext();
+            $this->isBuildingContext = true;
+
+            try {
+                $this->context = $this->buildContext();
+            } finally {
+                $this->isBuildingContext = false;
+            }
         }
 
         if ($this->context === null) {
