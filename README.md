@@ -38,6 +38,13 @@ composer require ahed92wakim/laravel-db-transaction-retry
 
 The package ships with the `DatabaseTransactionRetryServiceProvider`, which Laravel auto-discovers. No additional setup is needed.
 
+If you want the package to persist retry events, request logs, slow transaction logs, or query exceptions, publish the package assets and run the migrations before relying on the dashboard/telemetry features:
+
+```bash
+php artisan db-transaction-retry:install
+php artisan migrate
+```
+
 ## Usage
 
 ```php

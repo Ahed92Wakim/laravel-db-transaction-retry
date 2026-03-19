@@ -25,6 +25,7 @@ The format is based on Keep a Changelog, and this project aims to follow Semanti
 - Removed slow transaction channel logging so slow transaction monitoring now writes only to the package tables.
 
 ### Fixed
+- Fixed request logging re-entering the `QueryExecuted` listener while resolving `request()->user()`, which could cause host-app requests to hang when authentication triggered database queries.
 - Fixed metrics aggregation queries to group by route fields and avoid MySQL-only `ANY_VALUE` usage for broader database support.
 - Fixed `metrics/routes-volume` pagination to clamp `per_page` to a sane numeric range.
 - Stored the retry toggle marker under the application's storage path (configurable via `state_path`) to avoid unwritable vendor paths.
