@@ -49,6 +49,8 @@ function TransactionsPageContent() {
     const [routeVolumePage, setRouteVolumePage] = useState<number>(1);
     const [routeVolumeTotal, setRouteVolumeTotal] = useState<number>(0);
     const [routeVolumePerPage, setRouteVolumePerPage] = useState<number>(routeVolumePageSize);
+    const [sortColumn, setSortColumn] = useState<string | null>(null);
+    const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
     const [queryMetrics, setQueryMetrics] = useState<QueryMetric[]>([]);
     const [queryMetricsBucket, setQueryMetricsBucket] = useState<Bucket | null>(null);
     const [queryMetricsStatus, setQueryMetricsStatus] = useState<'idle' | 'loading' | 'error'>(
@@ -157,12 +159,17 @@ function TransactionsPageContent() {
     useEffect(() => {
         const controller = new AbortController();
         setRouteVolumeStatus('loading');
+        setRouteVolumeMetrics([]);
 
         const load = async () => {
             try {
                 const params = new URLSearchParams(rangeQuery);
                 params.set('page', String(routeVolumePage));
                 params.set('per_page', String(routeVolumePageSize));
+                if (sortColumn && sortColumn !== 'p95_ms') {
+                    params.set('sort_by', sortColumn);
+                    params.set('sort_dir', sortDirection);
+                }
 
                 const response = await fetch(
                     `${apiBase}/metrics/routes-volume?${params.toString()}`,
@@ -231,7 +238,7 @@ function TransactionsPageContent() {
         load();
 
         return () => controller.abort();
-    }, [rangeQuery, routeVolumePage]);
+    }, [rangeQuery, routeVolumePage, sortColumn, sortDirection]);
 
     const queryMetricsMessage =
         queryMetricsStatus === 'loading'
@@ -255,12 +262,36 @@ function TransactionsPageContent() {
                         ? 'Loading routes...'
                         : 'No routes on this page.'
                     : null;
+
+    const handleSort = (column: string) => {
+        const direction = sortColumn === column ? (sortDirection === 'asc' ? 'desc' : 'asc') : 'desc';
+        setSortColumn(column);
+        setSortDirection(direction);
+        if (column !== 'p95_ms') {
+            setRouteVolumePage(1);
+        }
+    };
+
+    // p95_ms is computed post-pagination, so sort it client-side within the current page only
+    const sortedRouteVolumeMetrics = useMemo(() => {
+        if (sortColumn !== 'p95_ms') return routeVolumeMetrics;
+        return [...routeVolumeMetrics].sort((a, b) =>
+            sortDirection === 'asc'
+                ? (a.p95_ms ?? 0) - (b.p95_ms ?? 0)
+                : (b.p95_ms ?? 0) - (a.p95_ms ?? 0)
+        );
+    }, [routeVolumeMetrics, sortColumn, sortDirection]);
+
     const routeVolumeTotalPages = Math.max(
         1,
         Math.ceil(routeVolumeTotal / Math.max(routeVolumePerPage, 1))
     );
     const currentRouteVolumePage = Math.min(routeVolumePage, routeVolumeTotalPages);
-    const routeVolumePageRows = routeVolumeMetrics;
+    const routeVolumePageRows = sortedRouteVolumeMetrics.slice(
+        0,
+        Math.max(routeVolumePerPage, 1)
+    );
+    const routeVolumeTableKey = `${timeRange}-${currentRouteVolumePage}-${sortColumn ?? 'default'}-${sortDirection}`;
     const queryMetricsDisplay = useMemo(
         () =>
             queryMetrics.map((point) => ({
@@ -510,17 +541,37 @@ function TransactionsPageContent() {
                 ) : (
                     <>
                         <div className="route-table__scroll">
-                            <table>
+                            <table key={routeVolumeTableKey}>
                                 <thead>
                                 <tr>
-                                    <th>Method</th>
-                                    <th>Path</th>
-                                    <th>1/2/3xx</th>
-                                    <th>4xx</th>
-                                    <th>5xx</th>
-                                    <th>Total</th>
-                                    <th>Avg</th>
-                                    <th>P95</th>
+                                    {([
+                                        {key: 'method', label: 'Method'},
+                                        {key: 'path', label: 'Path'},
+                                        {key: 'status_1xx_3xx', label: '1/2/3xx'},
+                                        {key: 'status_4xx', label: '4xx'},
+                                        {key: 'status_5xx', label: '5xx'},
+                                        {key: 'total', label: 'Total'},
+                                        {key: 'avg_ms', label: 'Avg'},
+                                        {key: 'p95_ms', label: 'P95'},
+                                    ] as const).map(({key, label}) => (
+                                        <th
+                                            key={key}
+                                            className="th--sortable"
+                                            onClick={() => handleSort(key)}
+                                            aria-sort={
+                                                sortColumn === key
+                                                    ? sortDirection === 'asc' ? 'ascending' : 'descending'
+                                                    : 'none'
+                                            }
+                                        >
+                                            {label}
+                                            <span className="sort-indicator" aria-hidden="true">
+                                                {sortColumn === key
+                                                    ? sortDirection === 'asc' ? ' ↑' : ' ↓'
+                                                    : ' ↕'}
+                                            </span>
+                                        </th>
+                                    ))}
                                 </tr>
                                 </thead>
                                 <tbody>

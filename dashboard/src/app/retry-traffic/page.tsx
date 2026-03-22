@@ -64,6 +64,8 @@ function RetryTrafficPageContent() {
   const [routeMetricsPage, setRouteMetricsPage] = useState<number>(1);
   const [routeMetricsTotal, setRouteMetricsTotal] = useState<number>(0);
   const [routeMetricsPerPage, setRouteMetricsPerPage] = useState<number>(routeMetricsPageSize);
+  const [sortColumn, setSortColumn] = useState<string | null>(null);
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
   const selectedRange =
     timeRanges.find((range) => range.value === timeRange) ?? timeRanges[1];
@@ -286,6 +288,10 @@ function RetryTrafficPageContent() {
         const params = new URLSearchParams(rangeQuery);
         params.set('page', String(routeMetricsPage));
         params.set('per_page', String(routeMetricsPageSize));
+        if (sortColumn) {
+          params.set('sort_by', sortColumn);
+          params.set('sort_dir', sortDirection);
+        }
 
         const response = await fetch(
           `${apiBase}/metrics/routes?${params.toString()}`,
@@ -345,7 +351,7 @@ function RetryTrafficPageContent() {
     load();
 
     return () => controller.abort();
-  }, [rangeQuery, routeMetricsPage]);
+  }, [rangeQuery, routeMetricsPage, sortColumn, sortDirection]);
 
   const calculatePercentageChange = (current: number | null, previous: number | null): { percentage: number; isDown: boolean } => {
     if (current === null || previous === null) {
@@ -419,6 +425,16 @@ function RetryTrafficPageContent() {
       })),
     [clientTimeZone, retryTraffic, retryTrafficBucket]
   );
+
+  const handleSort = (column: string) => {
+    const direction = sortColumn === column ? (sortDirection === 'asc' ? 'desc' : 'asc') : 'desc';
+    setSortColumn(column);
+    setSortDirection(direction);
+    setRouteMetricsPage(1);
+  };
+
+  const sortedRouteMetrics = routeMetrics; // server handles sorting
+
   const isRouteMetricsLoading = routeMetricsStatus === 'loading';
   const hasRouteMetricsRows = routeMetrics.length > 0;
   const routeMetricsMessage =
@@ -438,7 +454,12 @@ function RetryTrafficPageContent() {
     Math.ceil(routeMetricsTotal / Math.max(routeMetricsPerPage, 1))
   );
   const currentRouteMetricsPage = Math.min(routeMetricsPage, routeMetricsTotalPages);
-  const routeMetricsPageRows = routeMetrics;
+  const routeMetricsPageRows = sortedRouteMetrics.slice(0, Math.max(routeMetricsPerPage, 1));
+  const routeMetricsTableKey = `${timeRange}-${currentRouteMetricsPage}-${sortColumn ?? 'default'}-${sortDirection}`;
+
+  useEffect(() => {
+    setRouteMetricsPage((prev) => Math.min(prev, routeMetricsTotalPages));
+  }, [routeMetricsTotalPages]);
 
   useEffect(() => {
     setRouteMetricsPage(1);
@@ -571,14 +592,34 @@ function RetryTrafficPageContent() {
         ) : (
           <>
             <div className="route-table__scroll">
-              <table>
+              <table key={routeMetricsTableKey}>
                 <thead>
                   <tr>
-                    <th>Method</th>
-                    <th>Path</th>
-                    <th>Attempts</th>
-                    <th>Success</th>
-                    <th>Failure</th>
+                    {([
+                      {key: 'method', label: 'Method'},
+                      {key: 'path', label: 'Path'},
+                      {key: 'attempts', label: 'Attempts'},
+                      {key: 'success', label: 'Success'},
+                      {key: 'failure', label: 'Failure'},
+                    ] as const).map(({key, label}) => (
+                      <th
+                        key={key}
+                        className="th--sortable"
+                        onClick={() => handleSort(key)}
+                        aria-sort={
+                          sortColumn === key
+                            ? sortDirection === 'asc' ? 'ascending' : 'descending'
+                            : 'none'
+                        }
+                      >
+                        {label}
+                        <span className="sort-indicator" aria-hidden="true">
+                          {sortColumn === key
+                            ? sortDirection === 'asc' ? ' ↑' : ' ↓'
+                            : ' ↕'}
+                        </span>
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>

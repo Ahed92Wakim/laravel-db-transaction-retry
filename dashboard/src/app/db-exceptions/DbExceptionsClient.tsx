@@ -139,6 +139,8 @@ export default function DbExceptionsClient() {
   const [exceptionPage, setExceptionPage] = useState<number>(1);
   const [exceptionTotal, setExceptionTotal] = useState<number>(0);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [sortColumn, setSortColumn] = useState<string | null>(null);
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const previousRangeQuery = useRef<string | null>(null);
 
   const selectedRange =
@@ -172,6 +174,7 @@ export default function DbExceptionsClient() {
     }
 
     setExceptionsStatus('loading');
+    setExceptions([]);
     setSummarySeries([]);
     setSummaryBucket(null);
     setSummaryTotals(emptySummaryTotals);
@@ -179,7 +182,7 @@ export default function DbExceptionsClient() {
     const load = async () => {
       try {
         const response = await fetch(
-          `${apiBase}/metrics/exceptions?${rangeQuery}&per_page=${exceptionPageSize}&page=${exceptionPage}`,
+          `${apiBase}/metrics/exceptions?${rangeQuery}&per_page=${exceptionPageSize}&page=${exceptionPage}${sortColumn ? `&sort_by=${sortColumn}&sort_dir=${sortDirection}` : ''}`,
           {
             signal: controller.signal,
             headers: {Accept: 'application/json'},
@@ -266,7 +269,7 @@ export default function DbExceptionsClient() {
     load();
 
     return () => controller.abort();
-  }, [exceptionPage, rangeQuery]);
+  }, [exceptionPage, rangeQuery, sortColumn, sortDirection]);
 
   const normalizedSearch = searchQuery.trim().toLowerCase();
   const filteredExceptions = useMemo(() => {
@@ -291,6 +294,15 @@ export default function DbExceptionsClient() {
       return haystack.includes(normalizedSearch);
     });
   }, [exceptions, normalizedSearch]);
+
+  const handleSort = (column: string) => {
+    const direction = sortColumn === column ? (sortDirection === 'asc' ? 'desc' : 'asc') : 'desc';
+    setSortColumn(column);
+    setSortDirection(direction);
+    setExceptionPage(1);
+  };
+
+  const sortedExceptions = filteredExceptions; // server handles sorting
 
   const fallbackTotalOccurrences = exceptions.reduce(
     (sum, row) => sum + toCount(row.occurrences),
@@ -320,7 +332,8 @@ export default function DbExceptionsClient() {
   );
   const exceptionTotalPages = Math.max(1, Math.ceil(exceptionTotal / exceptionPageSize));
   const currentExceptionPage = Math.min(exceptionPage, exceptionTotalPages);
-  const exceptionsPageRows = filteredExceptions;
+  const exceptionsPageRows = sortedExceptions.slice(0, exceptionPageSize);
+  const exceptionsTableKey = `${timeRange}-${currentExceptionPage}-${sortColumn ?? 'default'}-${sortDirection}-${normalizedSearch}`;
   const noExceptionsInWindow = exceptions.length === 0 && summaryTotalOccurrences === 0;
   const exceptionMessage =
     exceptionsStatus === 'loading'
@@ -421,14 +434,34 @@ export default function DbExceptionsClient() {
         ) : (
           <>
             <div className="route-table__scroll">
-              <table>
+              <table key={exceptionsTableKey}>
                 <thead>
                   <tr>
-                    <th>Exception</th>
-                    <th>Error code</th>
-                    <th>Occurrences</th>
-                    <th>Users</th>
-                    <th>Last seen</th>
+                    {([
+                      {key: 'exception', label: 'Exception'},
+                      {key: 'error_code', label: 'Error code'},
+                      {key: 'occurrences', label: 'Occurrences'},
+                      {key: 'users', label: 'Users'},
+                      {key: 'last_seen', label: 'Last seen'},
+                    ] as const).map(({key, label}) => (
+                      <th
+                        key={key}
+                        className="th--sortable"
+                        onClick={() => handleSort(key)}
+                        aria-sort={
+                          sortColumn === key
+                            ? sortDirection === 'asc' ? 'ascending' : 'descending'
+                            : 'none'
+                        }
+                      >
+                        {label}
+                        <span className="sort-indicator" aria-hidden="true">
+                          {sortColumn === key
+                            ? sortDirection === 'asc' ? ' ↑' : ' ↓'
+                            : ' ↕'}
+                        </span>
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
