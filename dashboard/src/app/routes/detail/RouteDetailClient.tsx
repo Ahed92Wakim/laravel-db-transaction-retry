@@ -525,7 +525,7 @@ export default function RouteDetailClient() {
                 </div>
                 <div className="chart-summary__stats">
                   <div className="chart-summary__stat">
-                    <span className="legend-dot" />
+                    <span className="legend-dot legend-dot--cool" />
                     <span>1/2/3xx</span>
                     <strong>{formatOptionalNumber(trafficSummary.status_1xx_3xx)}</strong>
                   </div>
@@ -560,7 +560,7 @@ export default function RouteDetailClient() {
                         dataKey="status_1xx_3xx"
                         name="1/2/3xx"
                         stackId="status"
-                        fill="var(--accent)"
+                        fill="var(--accent-cool)"
                       />
                       <Bar
                         dataKey="status_4xx"

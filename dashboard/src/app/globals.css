@@ -915,6 +915,27 @@ h3 {
   background: rgba(15, 23, 42, 0.4);
 }
 
+.route-table th.th--sortable {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.route-table th.th--sortable:hover {
+  color: var(--ink);
+}
+
+.sort-indicator {
+  opacity: 0.4;
+  font-size: 0.75em;
+}
+
+.route-table th.th--sortable[aria-sort="ascending"] .sort-indicator,
+.route-table th.th--sortable[aria-sort="descending"] .sort-indicator {
+  opacity: 1;
+  color: var(--accent-hot);
+}
+
 .route-table td {
   border-top: 1px solid var(--border);
   font-size: 0.9rem;

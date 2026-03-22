@@ -210,9 +210,19 @@ class TransactionRetryEventController
         $successStatus = RetryStatus::Success->value;
         $failureStatus = RetryStatus::Failure->value;
 
+        $allowedRouteSort = [
+            'method'   => 'method',
+            'path'     => 'route_name',
+            'attempts' => 'attempts',
+            'success'  => 'success',
+            'failure'  => 'failure',
+        ];
+        $routeSortBy  = (string)$request->query('sort_by', 'attempts');
+        $routeSortDir = strtolower((string)$request->query('sort_dir', 'desc')) === 'asc' ? 'asc' : 'desc';
+        $routeSortCol = $allowedRouteSort[$routeSortBy] ?? 'attempts';
+
         $paginator = $this->retryEventModel()
             ->newQuery()
-//            ->select(['route_hash', 'method', 'route_name', 'url'])
             ->selectRaw('ANY_VALUE(route_hash) as route_hash')
             ->selectRaw('ANY_VALUE(method) as method')
             ->selectRaw('ANY_VALUE(route_name) as route_name')
@@ -233,10 +243,8 @@ class TransactionRetryEventController
             ->where(function ($query): void {
                 $query->whereNotNull('route_name')->orWhereNotNull('url');
             })
-//            ->groupBy('route_hash', 'method', 'route_name', 'url')
-            ->groupBy('retry_group_id')
-            ->orderByDesc('attempts')
-            ->orderByDesc('failure')
+            ->groupBy('route_hash', 'method', 'route_name', 'url')
+            ->orderBy($routeSortCol, $routeSortDir)
             ->paginate($perPage, ['*'], 'page', $page);
 
         return (new RetryRoutesResource($paginator->items(), [
@@ -263,6 +271,19 @@ class TransactionRetryEventController
         $perPage = (int)$perPageInput;
         $page    = max((int)$request->query('page', '1'), 1);
 
+        $allowedVolumeSort = [
+            'method'         => 'method',
+            'path'           => 'route_name',
+            'total'          => 'total',
+            'avg_ms'         => 'avg_ms',
+            'status_1xx_3xx' => 'status_1xx_3xx',
+            'status_4xx'     => 'status_4xx',
+            'status_5xx'     => 'status_5xx',
+        ];
+        $volumeSortBy  = (string)$request->query('sort_by', 'total');
+        $volumeSortDir = strtolower((string)$request->query('sort_dir', 'desc')) === 'asc' ? 'asc' : 'desc';
+        $volumeSortCol = $allowedVolumeSort[$volumeSortBy] ?? 'total';
+
         $baseQuery = $logModel
             ->newQuery()
             ->whereNotNull('completed_at')
@@ -282,36 +303,55 @@ class TransactionRetryEventController
             ->selectRaw('SUM(CASE WHEN http_status BETWEEN 400 AND 499 THEN 1 ELSE 0 END) as status_4xx')
             ->selectRaw('SUM(CASE WHEN http_status >= 500 THEN 1 ELSE 0 END) as status_5xx')
             ->groupBy('http_method', 'route_name', 'url')
-            ->orderByDesc('total')
+            ->orderBy($volumeSortCol, $volumeSortDir)
             ->paginate($perPage, ['*'], 'page', $page);
 
-        $rows = $paginator->getCollection()->map(function ($row) use ($baseQuery) {
-            $count  = (int) ($row->total ?? 0);
-            $offset = max((int) ceil($count * 0.95) - 1, 0);
+        // Fetch all elapsed_ms values for each route combination in a single query
+        $elapsedTimesByRoute = [];
+        foreach ($paginator->items() as $row) {
+            $routeKey = json_encode([
+                'method'     => $row->method,
+                'route_name' => $row->route_name,
+                'url'        => $row->url,
+            ]);
+            $elapsedTimesByRoute[$routeKey] = [];
+        }
 
-            $p95 = (clone $baseQuery)
-                ->when($row->method !== null, function ($query) use ($row): void {
-                    $query->where('http_method', $row->method);
-                }, function ($query): void {
-                    $query->whereNull('http_method');
-                })
-                ->when($row->route_name !== null, function ($query) use ($row): void {
-                    $query->where('route_name', $row->route_name);
-                }, function ($query): void {
-                    $query->whereNull('route_name');
-                })
-                ->when($row->url !== null, function ($query) use ($row): void {
-                    $query->where('url', $row->url);
-                }, function ($query): void {
-                    $query->whereNull('url');
-                })
+        if (!empty($elapsedTimesByRoute)) {
+            $elapsedTimes = (clone $baseQuery)
+                ->selectRaw('http_method as method')
+                ->selectRaw('route_name as route_name')
+                ->selectRaw('url as url')
+                ->selectRaw('elapsed_ms')
+                ->orderBy('http_method')
+                ->orderBy('route_name')
+                ->orderBy('url')
                 ->orderBy('elapsed_ms')
-                ->offset($offset)
-                ->limit(1)
-                ->value('elapsed_ms');
+                ->get();
 
-            $row->avg_ms         = is_numeric($row->avg_ms) ? round((float) $row->avg_ms, 2) : 0;
-            $row->p95_ms         = is_numeric($p95) ? (int) $p95 : 0;
+            foreach ($elapsedTimes as $record) {
+                $routeKey = json_encode([
+                    'method'     => $record->method,
+                    'route_name' => $record->route_name,
+                    'url'        => $record->url,
+                ]);
+                if (isset($elapsedTimesByRoute[$routeKey])) {
+                    $elapsedTimesByRoute[$routeKey][] = (int)$record->elapsed_ms;
+                }
+            }
+        }
+
+        $rows = $paginator->getCollection()->map(function ($row) use ($elapsedTimesByRoute) {
+            $routeKey = json_encode([
+                'method'     => $row->method,
+                'route_name' => $row->route_name,
+                'url'        => $row->url,
+            ]);
+
+            $row->avg_ms = is_numeric($row->avg_ms) ? round((float) $row->avg_ms, 2) : 0;
+            $row->p95_ms = isset($elapsedTimesByRoute[$routeKey])
+                ? $this->calculateP95($elapsedTimesByRoute[$routeKey])
+                : 0;
             $row->status_1xx_3xx = (int) ($row->status_1xx_3xx ?? 0);
             $row->status_4xx     = (int) ($row->status_4xx ?? 0);
             $row->status_5xx     = (int) ($row->status_5xx ?? 0);
@@ -390,6 +430,17 @@ class TransactionRetryEventController
             ->selectRaw('MAX(occurred_at) as last_seen')
             ->first();
 
+        $allowedExceptionSort = [
+            'exception'   => 'occurrences', // exception_class is ANY_VALUE; use occurrences as proxy
+            'error_code'  => 'occurrences', // sql_state is ANY_VALUE; use occurrences as proxy
+            'occurrences' => 'occurrences',
+            'users'       => 'users',
+            'last_seen'   => 'last_seen',
+        ];
+        $exceptionSortBy  = (string)$request->query('sort_by', 'occurrences');
+        $exceptionSortDir = strtolower((string)$request->query('sort_dir', 'desc')) === 'asc' ? 'asc' : 'desc';
+        $exceptionSortCol = $allowedExceptionSort[$exceptionSortBy] ?? 'occurrences';
+
         $paginator = (clone $baseQuery)
             ->selectRaw('ANY_VALUE(exception_class) as exception_class')
             ->selectRaw('ANY_VALUE(error_message) as error_message')
@@ -404,8 +455,7 @@ class TransactionRetryEventController
             ->selectRaw("COUNT(DISTINCT {$userKeyExpression}) as users")
             ->selectRaw('MAX(occurred_at) as last_seen')
             ->groupBy('event_hash')
-            ->orderByDesc('occurrences')
-            ->orderByDesc('last_seen')
+            ->orderBy($exceptionSortCol, $exceptionSortDir)
             ->paginate($perPage, ['*'], 'page', $page);
 
         $rows = $paginator->items();
@@ -700,20 +750,30 @@ class TransactionRetryEventController
             ];
         }
 
-        foreach ($metricsByBucket as $bucketKey => $metrics) {
-            if ($metrics['count'] === 0) {
-                continue;
+        // Fetch all execution times grouped by bucket to calculate P95 in a single query
+        $executionTimeRows = (clone $baseQuery)
+            ->selectRaw("{$bucketExpression} as bucket")
+            ->selectRaw('q.execution_time_ms')
+            ->orderBy('bucket')
+            ->orderBy('q.execution_time_ms')
+            ->get();
+
+        $executionTimesByBucket = [];
+        foreach ($executionTimeRows as $row) {
+            $bucketKey = (string)$row->bucket;
+            if (!isset($executionTimesByBucket[$bucketKey])) {
+                $executionTimesByBucket[$bucketKey] = [];
             }
+            $executionTimesByBucket[$bucketKey][] = (int)$row->execution_time_ms;
+        }
 
-            $offset = max((int)ceil($metrics['count'] * 0.95) - 1, 0);
-            $p95Ms  = (clone $baseQuery)
-                ->whereRaw("{$bucketExpression} = ?", [$bucketKey])
-                ->orderBy('q.execution_time_ms')
-                ->offset($offset)
-                ->limit(1)
-                ->value('q.execution_time_ms');
-
-            $metricsByBucket[$bucketKey]['p95_ms'] = is_numeric($p95Ms) ? (int)$p95Ms : 0;
+        // Calculate P95 for each bucket
+        foreach ($metricsByBucket as $bucketKey => $metrics) {
+            $p95Ms = 0;
+            if (isset($executionTimesByBucket[$bucketKey])) {
+                $p95Ms = $this->calculateP95($executionTimesByBucket[$bucketKey]);
+            }
+            $metricsByBucket[$bucketKey]['p95_ms'] = $p95Ms;
         }
 
         $seriesStart = $this->alignToBucket($start, $bucket);
@@ -825,20 +885,30 @@ class TransactionRetryEventController
             ];
         }
 
-        foreach ($metricsByBucket as $bucketKey => $metrics) {
-            if ($metrics['count'] === 0) {
-                continue;
+        // Fetch all execution times grouped by bucket to calculate P95 in a single query
+        $executionTimeRows = (clone $baseQuery)
+            ->selectRaw("{$bucketExpression} as bucket")
+            ->selectRaw('q.execution_time_ms')
+            ->orderBy('bucket')
+            ->orderBy('q.execution_time_ms')
+            ->get();
+
+        $executionTimesByBucket = [];
+        foreach ($executionTimeRows as $row) {
+            $bucketKey = (string)$row->bucket;
+            if (!isset($executionTimesByBucket[$bucketKey])) {
+                $executionTimesByBucket[$bucketKey] = [];
             }
+            $executionTimesByBucket[$bucketKey][] = (int)$row->execution_time_ms;
+        }
 
-            $offset = max((int)ceil($metrics['count'] * 0.95) - 1, 0);
-            $p95Ms  = (clone $baseQuery)
-                ->whereRaw("{$bucketExpression} = ?", [$bucketKey])
-                ->orderBy('q.execution_time_ms')
-                ->offset($offset)
-                ->limit(1)
-                ->value('q.execution_time_ms');
-
-            $metricsByBucket[$bucketKey]['p95_ms'] = is_numeric($p95Ms) ? (int)$p95Ms : 0;
+        // Calculate P95 for each bucket
+        foreach ($metricsByBucket as $bucketKey => $metrics) {
+            $p95Ms = 0;
+            if (isset($executionTimesByBucket[$bucketKey])) {
+                $p95Ms = $this->calculateP95($executionTimesByBucket[$bucketKey]);
+            }
+            $metricsByBucket[$bucketKey]['p95_ms'] = $p95Ms;
         }
 
         $seriesStart = $this->alignToBucket($start, $bucket);
@@ -1046,20 +1116,30 @@ class TransactionRetryEventController
             ];
         }
 
-        foreach ($metricsByBucket as $bucketKey => $metrics) {
-            if ($metrics['count'] === 0) {
-                continue;
+        // Fetch all elapsed_ms values grouped by bucket to calculate P95 in a single query
+        $elapsedTimeRows = (clone $baseQuery)
+            ->selectRaw("{$bucketExpression} as bucket")
+            ->selectRaw('elapsed_ms')
+            ->orderBy('bucket')
+            ->orderBy('elapsed_ms')
+            ->get();
+
+        $elapsedTimesByBucket = [];
+        foreach ($elapsedTimeRows as $row) {
+            $bucketKey = (string)$row->bucket;
+            if (!isset($elapsedTimesByBucket[$bucketKey])) {
+                $elapsedTimesByBucket[$bucketKey] = [];
             }
+            $elapsedTimesByBucket[$bucketKey][] = (int)$row->elapsed_ms;
+        }
 
-            $offset = max((int)ceil($metrics['count'] * 0.95) - 1, 0);
-            $p95Ms  = (clone $baseQuery)
-                ->whereRaw("{$bucketExpression} = ?", [$bucketKey])
-                ->orderBy('elapsed_ms')
-                ->offset($offset)
-                ->limit(1)
-                ->value('elapsed_ms');
-
-            $metricsByBucket[$bucketKey]['p95_ms'] = is_numeric($p95Ms) ? (int)$p95Ms : 0;
+        // Calculate P95 for each bucket
+        foreach ($metricsByBucket as $bucketKey => $metrics) {
+            $p95Ms = 0;
+            if (isset($elapsedTimesByBucket[$bucketKey])) {
+                $p95Ms = $this->calculateP95($elapsedTimesByBucket[$bucketKey]);
+            }
+            $metricsByBucket[$bucketKey]['p95_ms'] = $p95Ms;
         }
 
         $seriesStart = $this->alignToBucket($start, $bucket);
@@ -1092,13 +1172,11 @@ class TransactionRetryEventController
         $maxMs      = $totalCount > 0 ? (int)(clone $baseQuery)->max('elapsed_ms') : 0;
         $p95Ms      = 0;
         if ($totalCount > 0) {
-            $offset = max((int)ceil($totalCount * 0.95) - 1, 0);
-            $p95Ms  = (clone $baseQuery)
-                ->orderBy('elapsed_ms')
-                ->offset($offset)
-                ->limit(1)
-                ->value('elapsed_ms');
-            $p95Ms = is_numeric($p95Ms) ? (int)$p95Ms : 0;
+            $allElapsedTimes = (clone $baseQuery)
+                ->pluck('elapsed_ms')
+                ->map(static fn ($v) => (int)$v)
+                ->all();
+            $p95Ms = $this->calculateP95($allElapsedTimes);
         }
 
         return (new RetryRequestDurationResource($series, [
@@ -1136,6 +1214,19 @@ class TransactionRetryEventController
             });
         $this->applyRequestTypeFilter($baseQuery, $type);
 
+        $allowedRequestRouteSort = [
+            'method'         => 'http_method',
+            'path'           => 'route_name',
+            'total'          => 'total',
+            'avg_ms'         => 'avg_ms',
+            'status_1xx_3xx' => 'status_1xx_3xx',
+            'status_4xx'     => 'status_4xx',
+            'status_5xx'     => 'status_5xx',
+        ];
+        $requestRouteSortBy  = (string)$request->query('sort_by', 'total');
+        $requestRouteSortDir = strtolower((string)$request->query('sort_dir', 'desc')) === 'asc' ? 'asc' : 'desc';
+        $requestRouteSortCol = $allowedRequestRouteSort[$requestRouteSortBy] ?? 'total';
+
         $paginator = (clone $baseQuery)
             ->selectRaw('ANY_VALUE(http_method) as method')
             ->selectRaw('ANY_VALUE(route_name) as route_name')
@@ -1146,36 +1237,43 @@ class TransactionRetryEventController
             ->selectRaw('SUM(CASE WHEN http_status BETWEEN 400 AND 499 THEN 1 ELSE 0 END) as status_4xx')
             ->selectRaw('SUM(CASE WHEN http_status >= 500 THEN 1 ELSE 0 END) as status_5xx')
             ->groupBy('http_method', 'route_name', 'url')
-            ->orderByDesc('total')
+            ->orderBy($requestRouteSortCol, $requestRouteSortDir)
             ->paginate($perPage, ['*'], 'page', $page);
 
-        $rows = $paginator->getCollection()->map(function ($row) use ($baseQuery) {
-            $count  = (int)($row->total ?? 0);
-            $offset = max((int)ceil($count * 0.95) - 1, 0);
+        // Pre-compute P95 values for each row in the paginator by fetching all elapsed_ms in one query
+        $elapsedTimesByRoute = [];
 
-            $p95 = (clone $baseQuery)
-                ->when($row->method !== null, function ($query) use ($row): void {
-                    $query->where('http_method', $row->method);
-                }, function ($query): void {
-                    $query->whereNull('http_method');
-                })
-                ->when($row->route_name !== null, function ($query) use ($row): void {
-                    $query->where('route_name', $row->route_name);
-                }, function ($query): void {
-                    $query->whereNull('route_name');
-                })
-                ->when($row->url !== null, function ($query) use ($row): void {
-                    $query->where('url', $row->url);
-                }, function ($query): void {
-                    $query->whereNull('url');
-                })
-                ->orderBy('elapsed_ms')
-                ->offset($offset)
-                ->limit(1)
-                ->value('elapsed_ms');
+        $elapsedTimes = (clone $baseQuery)
+            ->select('http_method', 'route_name', 'url', 'elapsed_ms')
+            ->orderBy('http_method')
+            ->orderBy('route_name')
+            ->orderBy('url')
+            ->orderBy('elapsed_ms')
+            ->get();
 
-            $row->avg_ms         = is_numeric($row->avg_ms) ? round((float)$row->avg_ms, 2) : 0;
-            $row->p95_ms         = is_numeric($p95) ? (int)$p95 : 0;
+        foreach ($elapsedTimes as $record) {
+            $routeKey = json_encode([
+                'method'     => $record->http_method,
+                'route_name' => $record->route_name,
+                'url'        => $record->url,
+            ]);
+            if (!isset($elapsedTimesByRoute[$routeKey])) {
+                $elapsedTimesByRoute[$routeKey] = [];
+            }
+            $elapsedTimesByRoute[$routeKey][] = (int)$record->elapsed_ms;
+        }
+
+        $rows = $paginator->getCollection()->map(function ($row) use ($elapsedTimesByRoute) {
+            $routeKey = json_encode([
+                'method'     => $row->method,
+                'route_name' => $row->route_name,
+                'url'        => $row->url,
+            ]);
+
+            $row->avg_ms = is_numeric($row->avg_ms) ? round((float)$row->avg_ms, 2) : 0;
+            $row->p95_ms = isset($elapsedTimesByRoute[$routeKey])
+                ? $this->calculateP95($elapsedTimesByRoute[$routeKey])
+                : 0;
             $row->status_1xx_3xx = (int)($row->status_1xx_3xx ?? 0);
             $row->status_4xx     = (int)($row->status_4xx ?? 0);
             $row->status_5xx     = (int)($row->status_5xx ?? 0);
@@ -1486,6 +1584,23 @@ class TransactionRetryEventController
         return $connectionName !== null
             ? DB::connection($connectionName)
             : DB::connection();
+    }
+
+    /**
+     * Calculate P95 percentile from an array of values
+     */
+    private function calculateP95(array $values): int
+    {
+        if (empty($values)) {
+            return 0;
+        }
+
+        sort($values);
+        $count = count($values);
+        $index = (int)ceil($count * 0.95) - 1;
+        $index = max($index, 0);
+
+        return (int)($values[$index] ?? 0);
     }
 
     private function applyRequestTypeFilter($query, string $type): void
