@@ -1,7 +1,6 @@
 'use client';
 
 import {Suspense, useEffect, useMemo, useState} from 'react';
-import {useRouter} from 'next/navigation';
 import {
   Bar,
   BarChart,
@@ -14,7 +13,8 @@ import {
   YAxis,
 } from 'recharts';
 import DashboardShell from '../components/DashboardShell';
-import {ChartTooltip, QueryTooltip, renderStatusCell} from '../components/dashboard-ui';
+import RequestRoutesTable from '../components/RequestRoutesTable';
+import {ChartTooltip, QueryTooltip} from '../components/dashboard-ui';
 import {usePersistentTimeRange} from '../lib/usePersistentTimeRange';
 import {
   apiBase,
@@ -22,9 +22,7 @@ import {
   formatBucketLabel,
   formatDurationMs,
   formatOptionalNumber,
-  formatRouteLabel,
   formatValue,
-  methodClassName,
   resolveClientTimeZone,
   resolveBucket,
   resolveTimeWindow,
@@ -50,18 +48,6 @@ type RequestDurationPoint = {
   p95_ms: number;
 };
 
-type RequestRouteMetric = {
-  method?: string | null;
-  route_name?: string | null;
-  url?: string | null;
-  status_1xx_3xx: number;
-  status_4xx: number;
-  status_5xx: number;
-  total: number;
-  avg_ms: number;
-  p95_ms: number;
-};
-
 type DurationSummary = {
   min_ms: number | null;
   max_ms: number | null;
@@ -69,15 +55,12 @@ type DurationSummary = {
   p95_ms: number | null;
 };
 
-const routePageSize = 10;
-
 const toOptionalNumber = (value: unknown): number | null => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 };
 
 function RequestsPageContent() {
-  const router = useRouter();
   const [clientTimeZone, setClientTimeZone] = useState<string | null>(null);
   const [timeRange, setTimeRange] = usePersistentTimeRange();
   const [requestTraffic, setRequestTraffic] = useState<RequestTrafficPoint[]>([]);
@@ -96,13 +79,6 @@ function RequestsPageContent() {
     avg_ms: null,
     p95_ms: null,
   });
-  const [routeMetrics, setRouteMetrics] = useState<RequestRouteMetric[]>([]);
-  const [routeMetricsStatus, setRouteMetricsStatus] = useState<'idle' | 'loading' | 'error'>(
-    'idle'
-  );
-  const [routeMetricsPage, setRouteMetricsPage] = useState<number>(1);
-  const [routeMetricsTotal, setRouteMetricsTotal] = useState<number>(0);
-  const [searchQuery, setSearchQuery] = useState<string>('');
   const [visibleStatuses, setVisibleStatuses] = useState<Set<'1xx_3xx' | '4xx' | '5xx'>>(
     new Set(['1xx_3xx', '4xx', '5xx'])
   );
@@ -125,10 +101,6 @@ function RequestsPageContent() {
   useEffect(() => {
     setClientTimeZone(resolveClientTimeZone());
   }, []);
-
-  useEffect(() => {
-    setRouteMetricsPage(1);
-  }, [timeRange]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -255,75 +227,6 @@ function RequestsPageContent() {
     return () => controller.abort();
   }, [rangeQuery, timeRange]);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    setRouteMetricsStatus('loading');
-
-    const load = async () => {
-      try {
-        const params = new URLSearchParams(rangeQuery);
-        params.set('page', String(routeMetricsPage));
-        params.set('per_page', String(routePageSize));
-        params.set('type', 'http');
-
-        const response = await fetch(
-          `${apiBase}/metrics/requests-routes?${params.toString()}`,
-          {
-            signal: controller.signal,
-            headers: {Accept: 'application/json'},
-          }
-        );
-
-        if (!response.ok) {
-          setRouteMetricsStatus('error');
-          return;
-        }
-
-        const payload = (await response.json()) as {
-          data?: Array<{
-            method?: string | null;
-            route_name?: string | null;
-            url?: string | null;
-            status_1xx_3xx?: number | string;
-            status_4xx?: number | string;
-            status_5xx?: number | string;
-            total?: number | string;
-            avg_ms?: number | string;
-            p95_ms?: number | string;
-          }>;
-          meta?: {
-            page?: number | string;
-            per_page?: number | string;
-            total?: number | string;
-          };
-        };
-
-        const rows = Array.isArray(payload?.data) ? payload.data : [];
-        const normalized = rows.map((row) => ({
-          ...row,
-          status_1xx_3xx: toCount(row.status_1xx_3xx ?? 0),
-          status_4xx: toCount(row.status_4xx ?? 0),
-          status_5xx: toCount(row.status_5xx ?? 0),
-          total: toCount(row.total ?? 0),
-          avg_ms: Number(row.avg_ms ?? 0),
-          p95_ms: Number(row.p95_ms ?? 0),
-        }));
-
-        setRouteMetrics(normalized as RequestRouteMetric[]);
-        setRouteMetricsTotal(toCount(payload?.meta?.total ?? normalized.length));
-        setRouteMetricsStatus('idle');
-      } catch (error) {
-        if ((error as Error).name !== 'AbortError') {
-          setRouteMetricsStatus('error');
-        }
-      }
-    };
-
-    load();
-
-    return () => controller.abort();
-  }, [rangeQuery, routeMetricsPage]);
-
   const trafficDisplay = useMemo(
     () =>
       requestTraffic.map((point) => ({
@@ -407,61 +310,6 @@ function RequestsPageContent() {
           ? 'No request duration data in this window.'
           : null;
 
-  const normalizedSearch = searchQuery.trim().toLowerCase();
-  const filteredRoutes = useMemo(() => {
-    if (normalizedSearch === '') {
-      return routeMetrics;
-    }
-
-    return routeMetrics.filter((row) => {
-      const haystack = [row.method, row.route_name, row.url]
-        .map((value) => `${value ?? ''}`.toLowerCase())
-        .join(' ');
-
-      return haystack.includes(normalizedSearch);
-    });
-  }, [normalizedSearch, routeMetrics]);
-
-  const routeMetricsTotalPages = Math.max(1, Math.ceil(routeMetricsTotal / routePageSize));
-  const currentRoutePage = Math.min(routeMetricsPage, routeMetricsTotalPages);
-  const routePageRows = filteredRoutes;
-  const noRoutesInWindow = routeMetrics.length === 0;
-  const routeMessage =
-    routeMetricsStatus === 'loading'
-      ? 'Loading routes...'
-      : routeMetricsStatus === 'error'
-        ? 'Unable to load route metrics.'
-        : noRoutesInWindow
-          ? 'No routes recorded in this window.'
-          : filteredRoutes.length === 0
-            ? 'No routes match the current filters.'
-            : null;
-
-  useEffect(() => {
-    setRouteMetricsPage((prev) => Math.min(prev, routeMetricsTotalPages));
-  }, [routeMetricsTotalPages]);
-
-  const buildRouteDetailHref = (row: RequestRouteMetric): string | null => {
-    if (!row.route_name && !row.url) {
-      return null;
-    }
-
-    const params = new URLSearchParams();
-    if (row.method) {
-      params.set('method', row.method);
-    }
-    if (row.route_name) {
-      params.set('route_name', row.route_name);
-    }
-    if (row.url) {
-      params.set('url', row.url);
-    }
-    params.set('window', timeRange);
-    params.set('type', 'http');
-
-    return `/routes/detail?${params.toString()}`;
-  };
-
   return (
     <DashboardShell
       timeRange={timeRange}
@@ -482,7 +330,7 @@ function RequestsPageContent() {
               </div>
               <div className="chart-summary__stats">
                 {[
-                  { key: '1xx_3xx', label: '1/2/3xx', dotClass: '', value: trafficSummary.status_1xx_3xx },
+                  { key: '1xx_3xx', label: '1/2/3xx', dotClass: 'legend-dot--cool', value: trafficSummary.status_1xx_3xx },
                   { key: '4xx',     label: '4xx',     dotClass: 'legend-dot--gold', value: trafficSummary.status_4xx },
                   { key: '5xx',     label: '5xx',     dotClass: 'legend-dot--hot',  value: trafficSummary.status_5xx },
                 ].map(({ key, label, dotClass, value }) => {
@@ -541,7 +389,7 @@ function RequestsPageContent() {
                       dataKey="status_1xx_3xx"
                       name="1/2/3xx"
                       stackId="status"
-                      fill="var(--accent)"
+                      fill="var(--accent-cool)"
                     />
                     <Bar
                       dataKey="status_4xx"
@@ -625,107 +473,14 @@ function RequestsPageContent() {
         </div>
       </section>
 
-      <section className="route-table route-table--compact">
-        <div className="route-table__header route-table__header--exceptions">
-          <div className="route-table__heading">
-            <p className="route-table__title">
-              Routes
-            </p>
-            <span className="route-table__meta">
-              {rangeShortLabel} window · {formatValue(routeMetricsTotal)}{' '}
-              routes · page {currentRoutePage} of{' '}
-              {routeMetricsTotalPages}
-            </span>
-          </div>
-          <div className="exceptions-toolbar">
-            <input
-              className="exceptions-search"
-              type="search"
-              placeholder="Search routes..."
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              aria-label="Search routes"
-            />
-          </div>
-        </div>
-
-        {routeMessage ? (
-          <p className="route-table__empty">{routeMessage}</p>
-        ) : (
-          <>
-            <div className="route-table__scroll">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Method</th>
-                    <th>Path</th>
-                    <th>1/2/3xx</th>
-                    <th>4xx</th>
-                    <th>5xx</th>
-                    <th>Total</th>
-                    <th>Avg</th>
-                    <th>P95</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {routePageRows.map((row) => (
-                    <tr
-                      key={`route-${row.method ?? 'method'}-${row.route_name ?? row.url ?? 'unknown'}`}
-                      className="route-row"
-                      onClick={() => {
-                        const href = buildRouteDetailHref(row);
-                        if (href) {
-                          router.push(href);
-                        }
-                      }}
-                    >
-                      <td>
-                        <span
-                          className={`route-method route-method--text ${methodClassName(row.method)}`}
-                        >
-                          {row.method ? row.method.toUpperCase() : '--'}
-                        </span>
-                      </td>
-                      <td>{formatRouteLabel(row)}</td>
-                      <td>{formatValue(row.status_1xx_3xx ?? 0)}</td>
-                      <td>{renderStatusCell(row.status_4xx, 'warn')}</td>
-                      <td>{renderStatusCell(row.status_5xx, 'error')}</td>
-                      <td>{formatValue(row.total ?? 0)}</td>
-                      <td>{formatDurationMs(row.avg_ms)}</td>
-                      <td>{formatDurationMs(row.p95_ms)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="table-footer">
-              <span className="table-footer__meta">
-                Showing {routePageRows.length} of {formatValue(routeMetricsTotal)}
-              </span>
-              <div className="table-footer__actions">
-                <button
-                  type="button"
-                  className="pagination-button"
-                  onClick={() => setRouteMetricsPage((prev) => Math.max(1, prev - 1))}
-                  disabled={routeMetricsStatus === 'loading' || currentRoutePage <= 1}
-                >
-                  Previous
-                </button>
-                <button
-                  type="button"
-                  className="pagination-button"
-                  onClick={() =>
-                    setRouteMetricsPage((prev) => Math.min(routeMetricsTotalPages, prev + 1))
-                  }
-                  disabled={routeMetricsStatus === 'loading' || currentRoutePage >= routeMetricsTotalPages}
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-          </>
-        )}
-      </section>
+      <RequestRoutesTable
+        rangeQuery={rangeQuery}
+        timeRange={timeRange}
+        rangeShortLabel={rangeShortLabel}
+        requestType="http"
+        title="Routes"
+        itemLabel="routes"
+      />
     </DashboardShell>
   );
 }
