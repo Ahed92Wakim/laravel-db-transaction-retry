@@ -157,7 +157,7 @@ export const formatDashboardDateTime = (
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
-    timeZone: timeZone ?? undefined,
+    timeZone: timeZone ?? resolveClientTimeZone(),
   }).format(date);
 };
 
@@ -179,7 +179,7 @@ export const formatBucketLabel = (
 
   return new Intl.DateTimeFormat(undefined, {
     ...options,
-    timeZone: timeZone ?? undefined,
+    timeZone: timeZone ?? resolveClientTimeZone(),
   }).format(date);
 };
 
@@ -285,7 +285,7 @@ export const formatTooltipTimestamp = (
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
-    timeZone: timeZone ?? undefined,
+    timeZone: timeZone ?? resolveClientTimeZone(),
     timeZoneName: 'short',
   }).format(date);
 };
