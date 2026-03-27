@@ -344,10 +344,10 @@ function TransactionsPageContent() {
     const queryDurationSummary = useMemo(() => {
         const avgValues = queryMetrics
             .map((point) => point.avg_ms)
-            .filter((value) => Number.isFinite(value));
+            .filter((value) => Number.isFinite(value) && value > 0);
         const p95Values = queryMetrics
             .map((point) => point.p95_ms)
-            .filter((value) => Number.isFinite(value));
+            .filter((value) => Number.isFinite(value) && value > 0);
         const avgAvg =
             avgValues.length > 0
                 ? avgValues.reduce((sum, value) => sum + value, 0) / avgValues.length
@@ -391,9 +391,9 @@ function TransactionsPageContent() {
             params.set('url', row.url);
         }
         params.set('window', timeRange);
-        params.set('type', 'http');
+        params.set('type', 'transaction');
 
-        return `/routes/detail?${params.toString()}`;
+        return `/transactions/detail?${params.toString()}`;
     };
 
     return (

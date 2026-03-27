@@ -56,6 +56,124 @@ test('slow transaction monitor logs transaction and slow queries', function (): 
     expect($queryRow['query_order'])->toBe(1);
 });
 
+test('slow transaction monitor skips transactions during queue job when exclude_queue is true', function (): void {
+    $database = new FakeSlowDatabaseManager();
+    $this->app->instance('db', $database);
+
+    $monitor = new SlowTransactionMonitor([
+        'transaction_threshold_ms' => 0,
+        'slow_query_threshold_ms'  => 0,
+        'log_table'                => 'db_transaction_logs',
+        'query_table'              => 'db_query_logs',
+        'log_connection'           => null,
+        'exclude_queue'            => true,
+    ]);
+
+    $connection = $database->connection();
+
+    $monitor->handleJobProcessing();
+
+    $monitor->handleTransactionBeginning(new TransactionBeginning($connection));
+    $monitor->handleQueryExecuted(new QueryExecuted('select 1', [], 5.0, $connection));
+    $monitor->handleTransactionCommitted(new TransactionCommitted($connection));
+
+    $logRows = array_values(array_filter(
+        $database->insertedRows,
+        static fn (array $row): bool => $row['table'] === 'db_transaction_logs'
+    ));
+    expect($logRows)->toHaveCount(0);
+
+    $monitor->handleJobFinished();
+
+    $monitor->handleTransactionBeginning(new TransactionBeginning($connection));
+    $monitor->handleQueryExecuted(new QueryExecuted('select 1', [], 5.0, $connection));
+    $monitor->handleTransactionCommitted(new TransactionCommitted($connection));
+
+    $logRows = array_values(array_filter(
+        $database->insertedRows,
+        static fn (array $row): bool => $row['table'] === 'db_transaction_logs'
+    ));
+    expect($logRows)->toHaveCount(1);
+});
+
+test('slow transaction monitor skips transactions that begin before JobProcessing when queue worker command is running', function (): void {
+    $database = new FakeSlowDatabaseManager();
+    $this->app->instance('db', $database);
+
+    $monitor = new SlowTransactionMonitor([
+        'transaction_threshold_ms' => 0,
+        'slow_query_threshold_ms'  => 0,
+        'log_table'                => 'db_transaction_logs',
+        'query_table'              => 'db_query_logs',
+        'log_connection'           => null,
+        'exclude_queue'            => true,
+    ]);
+
+    $connection = $database->connection();
+
+    // Simulates CommandStarting for queue:work firing before any job or transaction
+    $monitor->handleQueueCommandStarting('queue:work');
+
+    // Internal database-queue transaction (job claim) fires before JobProcessing
+    $monitor->handleTransactionBeginning(new TransactionBeginning($connection));
+    $monitor->handleQueryExecuted(new QueryExecuted('update `jobs` set `reserved_at` = ?', [time()], 2.0, $connection));
+    $monitor->handleTransactionCommitted(new TransactionCommitted($connection));
+
+    // Then individual job lifecycle
+    $monitor->handleJobProcessing();
+    $monitor->handleTransactionBeginning(new TransactionBeginning($connection));
+    $monitor->handleQueryExecuted(new QueryExecuted('select 1', [], 5.0, $connection));
+    $monitor->handleTransactionCommitted(new TransactionCommitted($connection));
+    $monitor->handleJobFinished();
+
+    $logRows = array_values(array_filter(
+        $database->insertedRows,
+        static fn (array $row): bool => $row['table'] === 'db_transaction_logs'
+    ));
+    expect($logRows)->toHaveCount(0);
+
+    // After command finishes, normal transactions should be logged again
+    $monitor->handleQueueCommandFinished('queue:work');
+
+    $monitor->handleTransactionBeginning(new TransactionBeginning($connection));
+    $monitor->handleQueryExecuted(new QueryExecuted('select 1', [], 5.0, $connection));
+    $monitor->handleTransactionCommitted(new TransactionCommitted($connection));
+
+    $logRows = array_values(array_filter(
+        $database->insertedRows,
+        static fn (array $row): bool => $row['table'] === 'db_transaction_logs'
+    ));
+    expect($logRows)->toHaveCount(1);
+});
+
+test('slow transaction monitor logs transactions during queue job when exclude_queue is false', function (): void {
+    $database = new FakeSlowDatabaseManager();
+    $this->app->instance('db', $database);
+
+    $monitor = new SlowTransactionMonitor([
+        'transaction_threshold_ms' => 0,
+        'slow_query_threshold_ms'  => 0,
+        'log_table'                => 'db_transaction_logs',
+        'query_table'              => 'db_query_logs',
+        'log_connection'           => null,
+        'exclude_queue'            => false,
+    ]);
+
+    $connection = $database->connection();
+
+    $monitor->handleJobProcessing();
+
+    $monitor->handleTransactionBeginning(new TransactionBeginning($connection));
+    $monitor->handleQueryExecuted(new QueryExecuted('select 1', [], 5.0, $connection));
+    $monitor->handleTransactionCommitted(new TransactionCommitted($connection));
+
+    $logRows = array_values(array_filter(
+        $database->insertedRows,
+        static fn (array $row): bool => $row['table'] === 'db_transaction_logs'
+    ));
+    expect($logRows)->toHaveCount(1);
+});
+
 test('slow transaction monitor updates http status after request handled', function (): void {
     $database = new FakeSlowDatabaseManager(columns: [
         'db_transaction_logs' => ['http_status'],
