@@ -17,9 +17,9 @@ class SlowTransactionMonitor
     private int $slowQueryThresholdMs;
     private ?int $lastResponseStatus = null;
     private array $pendingLogIds     = [];
-    private bool $excludeQueue    = true;
-    private bool $processingJob  = false;
-    private bool $inQueueWorker  = false;
+    private bool $excludeQueue       = true;
+    private bool $processingJob      = false;
+    private bool $inQueueWorker      = false;
     private SlowTransactionWriter $writer;
 
     public function __construct(array $config)

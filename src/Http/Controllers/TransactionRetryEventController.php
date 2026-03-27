@@ -16,10 +16,10 @@ use DatabaseTransactions\RetryHelper\Http\Resources\RetryRequestMetricsResource;
 use DatabaseTransactions\RetryHelper\Http\Resources\RetryRequestRoutesResource;
 use DatabaseTransactions\RetryHelper\Http\Resources\RetryRequestsResource;
 use DatabaseTransactions\RetryHelper\Http\Resources\RetryRoutesResource;
-use DatabaseTransactions\RetryHelper\Http\Resources\RetryTransactionLogsResource;
-use DatabaseTransactions\RetryHelper\Http\Resources\RetryTransactionQueriesResource;
 use DatabaseTransactions\RetryHelper\Http\Resources\RetryRoutesVolumeResource;
 use DatabaseTransactions\RetryHelper\Http\Resources\RetryTrafficResource;
+use DatabaseTransactions\RetryHelper\Http\Resources\RetryTransactionLogsResource;
+use DatabaseTransactions\RetryHelper\Http\Resources\RetryTransactionQueriesResource;
 use DatabaseTransactions\RetryHelper\Models\DbException;
 use DatabaseTransactions\RetryHelper\Models\QueryLog;
 use DatabaseTransactions\RetryHelper\Models\RequestLog;
@@ -1096,15 +1096,15 @@ class TransactionRetryEventController
             ->get();
 
         $logData = [
-            'id'                 => $log->id,
-            'completed_at'       => $log->completed_at,
-            'http_method'        => $log->http_method,
-            'route_name'         => $log->route_name,
-            'url'                => $log->url,
-            'http_status'        => $log->http_status,
-            'elapsed_ms'         => $log->elapsed_ms,
-            'total_queries_count'=> $log->total_queries_count,
-            'slow_queries_count' => $log->slow_queries_count,
+            'id'                  => $log->id,
+            'completed_at'        => $log->completed_at,
+            'http_method'         => $log->http_method,
+            'route_name'          => $log->route_name,
+            'url'                 => $log->url,
+            'http_status'         => $log->http_status,
+            'elapsed_ms'          => $log->elapsed_ms,
+            'total_queries_count' => $log->total_queries_count,
+            'slow_queries_count'  => $log->slow_queries_count,
         ];
 
         return (new RetryTransactionQueriesResource($queries->all(), [
