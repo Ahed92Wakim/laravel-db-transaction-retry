@@ -385,6 +385,7 @@ class RequestMonitor
             return false;
         }
 
-        return str_starts_with($command, 'db-transaction-retry:');
+        return str_starts_with($command, 'db-transaction-retry:')
+            || str_starts_with($command, 'queue:');
     }
 }
