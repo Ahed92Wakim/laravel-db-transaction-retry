@@ -12,6 +12,10 @@ use Illuminate\Database\Events\TransactionBeginning;
 use Illuminate\Database\Events\TransactionCommitted;
 use Illuminate\Database\Events\TransactionRolledBack;
 use Illuminate\Foundation\Http\Events\RequestHandled;
+use Illuminate\Queue\Events\JobExceptionOccurred;
+use Illuminate\Queue\Events\JobFailed;
+use Illuminate\Queue\Events\JobProcessed;
+use Illuminate\Queue\Events\JobProcessing;
 use Illuminate\Support\ServiceProvider;
 
 class EventServiceProvider extends ServiceProvider
@@ -63,6 +67,36 @@ class EventServiceProvider extends ServiceProvider
             $events->listen(RequestHandled::class, function ($event): void {
                 $this->app->make(SlowTransactionMonitor::class)->handleRequestHandled($event);
             });
+        }
+
+        if ($config['exclude_queue'] ?? true) {
+            if (class_exists(CommandStarting::class)) {
+                $events->listen(CommandStarting::class, function ($event): void {
+                    $this->app->make(SlowTransactionMonitor::class)
+                        ->handleQueueCommandStarting((string) ($event->command ?? ''));
+                });
+            }
+
+            if (class_exists(CommandFinished::class)) {
+                $events->listen(CommandFinished::class, function ($event): void {
+                    $this->app->make(SlowTransactionMonitor::class)
+                        ->handleQueueCommandFinished((string) ($event->command ?? ''));
+                });
+            }
+
+            if (class_exists(JobProcessing::class)) {
+                $events->listen(JobProcessing::class, function (): void {
+                    $this->app->make(SlowTransactionMonitor::class)->handleJobProcessing();
+                });
+            }
+
+            foreach ([JobProcessed::class, JobFailed::class, JobExceptionOccurred::class] as $jobEvent) {
+                if (class_exists($jobEvent)) {
+                    $events->listen($jobEvent, function (): void {
+                        $this->app->make(SlowTransactionMonitor::class)->handleJobFinished();
+                    });
+                }
+            }
         }
     }
 

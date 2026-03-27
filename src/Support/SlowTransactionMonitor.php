@@ -17,12 +17,16 @@ class SlowTransactionMonitor
     private int $slowQueryThresholdMs;
     private ?int $lastResponseStatus = null;
     private array $pendingLogIds     = [];
+    private bool $excludeQueue    = true;
+    private bool $processingJob  = false;
+    private bool $inQueueWorker  = false;
     private SlowTransactionWriter $writer;
 
     public function __construct(array $config)
     {
         $this->transactionThresholdMs = max(0, (int) ($config['transaction_threshold_ms'] ?? 2000));
         $this->slowQueryThresholdMs   = max(0, (int) ($config['slow_query_threshold_ms'] ?? 1000));
+        $this->excludeQueue           = (bool) ($config['exclude_queue'] ?? true);
 
         $logTable      = trim((string) ($config['log_table'] ?? 'db_transaction_logs'));
         $queryTable    = trim((string) ($config['query_table'] ?? 'db_query_logs'));
@@ -33,8 +37,36 @@ class SlowTransactionMonitor
         $this->writer = new SlowTransactionWriter($logTable, $queryTable, $logConnection);
     }
 
+    public function handleQueueCommandStarting(string $command): void
+    {
+        if (str_starts_with($command, 'queue:')) {
+            $this->inQueueWorker = true;
+        }
+    }
+
+    public function handleQueueCommandFinished(string $command): void
+    {
+        if (str_starts_with($command, 'queue:')) {
+            $this->inQueueWorker = false;
+        }
+    }
+
+    public function handleJobProcessing(): void
+    {
+        $this->processingJob = true;
+    }
+
+    public function handleJobFinished(): void
+    {
+        $this->processingJob = false;
+    }
+
     public function handleTransactionBeginning(TransactionBeginning $event): void
     {
+        if ($this->excludeQueue && ($this->processingJob || $this->inQueueWorker)) {
+            return;
+        }
+
         $connection = $event->connectionName                ?? 'default';
         $stack      = $this->transactionStacks[$connection] ?? [];
         $isRoot     = count($stack) === 0;

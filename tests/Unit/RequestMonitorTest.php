@@ -110,17 +110,17 @@ test('request monitor logs command queries', function (): void {
     $input  = new ArrayInput([]);
     $output = new NullOutput();
 
-    $monitor->handleCommandStarting(new CommandStarting('queue:work', $input, $output));
+    $monitor->handleCommandStarting(new CommandStarting('inspire', $input, $output));
 
     $connection = $database->connection();
     $monitor->handleQueryExecuted(new QueryExecuted(
-        'select * from jobs where reserved_at is null',
+        'select * from users',
         [],
         4.2,
         $connection
     ));
 
-    $monitor->handleCommandFinished(new CommandFinished('queue:work', $input, $output, 0));
+    $monitor->handleCommandFinished(new CommandFinished('inspire', $input, $output, 0));
 
     $logRows = array_values(array_filter(
         $database->insertedRows,
@@ -131,9 +131,40 @@ test('request monitor logs command queries', function (): void {
 
     $logRow = $logRows[0]['row'];
     expect($logRow['http_method'])->toBe('CLI');
-    expect($logRow['route_name'])->toBe('queue:work');
-    expect($logRow['url'])->toBe('queue:work');
+    expect($logRow['route_name'])->toBe('inspire');
+    expect($logRow['url'])->toBe('inspire');
     expect($logRow['http_status'])->toBeNull();
+});
+
+test('request monitor ignores queue commands', function (): void {
+    $database = new FakeRequestDatabaseManager();
+    $this->app->instance('db', $database);
+
+    $monitor = new RequestMonitor([
+        'enabled'        => true,
+        'log_table'      => 'db_request_logs',
+        'query_table'    => 'db_query_logs',
+        'log_connection' => null,
+    ]);
+
+    $input  = new ArrayInput([]);
+    $output = new NullOutput();
+
+    foreach (['queue:work', 'queue:listen', 'queue:retry'] as $command) {
+        $monitor->handleCommandStarting(new CommandStarting($command, $input, $output));
+
+        $connection = $database->connection();
+        $monitor->handleQueryExecuted(new QueryExecuted(
+            'select * from jobs where reserved_at is null',
+            [],
+            4.2,
+            $connection
+        ));
+
+        $monitor->handleCommandFinished(new CommandFinished($command, $input, $output, 0));
+    }
+
+    expect($database->insertedRows)->toBe([]);
 });
 
 test('request monitor ignores package table queries', function (): void {

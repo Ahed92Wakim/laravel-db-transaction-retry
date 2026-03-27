@@ -16,6 +16,8 @@ use DatabaseTransactions\RetryHelper\Http\Resources\RetryRequestMetricsResource;
 use DatabaseTransactions\RetryHelper\Http\Resources\RetryRequestRoutesResource;
 use DatabaseTransactions\RetryHelper\Http\Resources\RetryRequestsResource;
 use DatabaseTransactions\RetryHelper\Http\Resources\RetryRoutesResource;
+use DatabaseTransactions\RetryHelper\Http\Resources\RetryTransactionLogsResource;
+use DatabaseTransactions\RetryHelper\Http\Resources\RetryTransactionQueriesResource;
 use DatabaseTransactions\RetryHelper\Http\Resources\RetryRoutesVolumeResource;
 use DatabaseTransactions\RetryHelper\Http\Resources\RetryTrafficResource;
 use DatabaseTransactions\RetryHelper\Models\DbException;
@@ -832,6 +834,19 @@ class TransactionRetryEventController
             ->where('l.completed_at', '>=', $start)
             ->where('l.completed_at', '<=', $end);
 
+        $filterMethod    = $request->query('method');
+        $filterRouteName = $request->query('route_name');
+        $filterUrl       = $request->query('url');
+
+        if (is_string($filterMethod) && $filterMethod !== '') {
+            $baseQuery->where('l.http_method', $filterMethod);
+        }
+        if (is_string($filterRouteName) && $filterRouteName !== '') {
+            $baseQuery->where('l.route_name', $filterRouteName);
+        } elseif (is_string($filterUrl) && $filterUrl !== '') {
+            $baseQuery->where('l.url', $filterUrl);
+        }
+
         $rows = (clone $baseQuery)
             ->selectRaw("{$bucketExpression} as bucket")
             ->selectRaw('COUNT(*) as count')
@@ -856,7 +871,7 @@ class TransactionRetryEventController
             ];
         }
 
-        $durationRows = $logModel
+        $durationQuery = $logModel
             ->newQuery()
             ->from("{$logTable} as l")
             ->selectRaw("{$bucketExpression} as bucket")
@@ -869,10 +884,18 @@ class TransactionRetryEventController
             )
             ->whereNotNull('l.completed_at')
             ->where('l.completed_at', '>=', $start)
-            ->where('l.completed_at', '<=', $end)
-            ->groupBy('bucket')
-            ->orderBy('bucket')
-            ->get();
+            ->where('l.completed_at', '<=', $end);
+
+        if (is_string($filterMethod) && $filterMethod !== '') {
+            $durationQuery->where('l.http_method', $filterMethod);
+        }
+        if (is_string($filterRouteName) && $filterRouteName !== '') {
+            $durationQuery->where('l.route_name', $filterRouteName);
+        } elseif (is_string($filterUrl) && $filterUrl !== '') {
+            $durationQuery->where('l.url', $filterUrl);
+        }
+
+        $durationRows = $durationQuery->groupBy('bucket')->orderBy('bucket')->get();
 
         $durationMetricsByBucket = [];
         foreach ($durationRows as $row) {
@@ -998,6 +1021,95 @@ class TransactionRetryEventController
             'per_page' => $paginator->perPage(),
             'total'    => $paginator->total(),
         ]))->response($request);
+    }
+
+    public function transactionLogs(Request $request): JsonResponse
+    {
+        $query = $this->slowTransactionLogModel()->newQuery();
+
+        $from = $this->parseTimestamp($request->query('from'));
+        if ($from) {
+            $query->where('completed_at', '>=', $from);
+        }
+
+        $to = $this->parseTimestamp($request->query('to'));
+        if ($to) {
+            $query->where('completed_at', '<=', $to);
+        }
+
+        $method = $request->query('method');
+        if (is_string($method) && $method !== '') {
+            $query->where('http_method', $method);
+        }
+
+        $routeName = $request->query('route_name');
+        if (is_string($routeName) && $routeName !== '') {
+            $query->where('route_name', $routeName);
+        } else {
+            $url = $request->query('url');
+            if (is_string($url) && $url !== '') {
+                $query->where('url', $url);
+            }
+        }
+
+        $search = trim((string) $request->query('search', ''));
+        if ($search !== '') {
+            $query->where(function ($builder) use ($search): void {
+                $builder
+                    ->where('route_name', 'like', "%{$search}%")
+                    ->orWhere('url', 'like', "%{$search}%")
+                    ->orWhere('http_method', 'like', "%{$search}%");
+            });
+        }
+
+        $query->orderByDesc('completed_at')->orderByDesc('id');
+
+        $perPage = min(max((int) $request->query('per_page', '20'), 1), 200);
+        $page    = max((int) $request->query('page', '1'), 1);
+
+        $paginator = $query->paginate($perPage, ['*'], 'page', $page);
+
+        return (new RetryTransactionLogsResource($paginator->items(), [
+            'page'     => $paginator->currentPage(),
+            'per_page' => $paginator->perPage(),
+            'total'    => $paginator->total(),
+        ]))->response($request);
+    }
+
+    public function transactionQueries(int|string $id): JsonResponse
+    {
+        $logModel   = $this->slowTransactionLogModel();
+        $logTable   = $logModel->getTable();
+        $queryModel = $this->slowQueryLogModel();
+
+        $log = $logModel->newQuery()->where('id', $id)->first();
+
+        if (! $log) {
+            abort(404);
+        }
+
+        $queries = $queryModel
+            ->newQuery()
+            ->where('loggable_id', $id)
+            ->where('loggable_type', $logTable)
+            ->orderBy('query_order')
+            ->get();
+
+        $logData = [
+            'id'                 => $log->id,
+            'completed_at'       => $log->completed_at,
+            'http_method'        => $log->http_method,
+            'route_name'         => $log->route_name,
+            'url'                => $log->url,
+            'http_status'        => $log->http_status,
+            'elapsed_ms'         => $log->elapsed_ms,
+            'total_queries_count'=> $log->total_queries_count,
+            'slow_queries_count' => $log->slow_queries_count,
+        ];
+
+        return (new RetryTransactionQueriesResource($queries->all(), [
+            'transaction' => $logData,
+        ]))->response();
     }
 
     public function requestMetrics(Request $request): JsonResponse

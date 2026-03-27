@@ -97,6 +97,7 @@ return [
         'log_table'                => env('DB_SLOW_TRANSACTION_LOG_TABLE', 'db_transaction_logs'),
         'query_table'              => env('DB_SLOW_TRANSACTION_QUERY_TABLE', 'db_query_logs'),
         'log_connection'           => env('DB_SLOW_TRANSACTION_LOG_CONNECTION'),
+        'exclude_queue'            => env('DB_SLOW_TRANSACTION_EXCLUDE_QUEUE', true),
     ],
 
     /*

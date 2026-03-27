@@ -80,5 +80,7 @@ if ($apiEnabled) {
             Route::get('metrics/requests-duration', [TransactionRetryEventController::class, 'requestDuration']);
             Route::get('metrics/requests-routes', [TransactionRetryEventController::class, 'requestRoutes']);
             Route::get('requests', [TransactionRetryEventController::class, 'requests']);
+            Route::get('transaction-logs', [TransactionRetryEventController::class, 'transactionLogs']);
+            Route::get('transaction-logs/{id}/queries', [TransactionRetryEventController::class, 'transactionQueries'])->whereNumber('id');
         });
 }

@@ -13,6 +13,7 @@ composer install          # Install PHP dependencies
 composer test             # Run Pest tests
 composer fix              # Run PHP CS Fixer
 composer fix:dry          # Dry-run code style check
+vendor/bin/phpstan analyse # Static analysis (level 5, src/ only)
 ```
 
 Run a single test file:
@@ -49,12 +50,23 @@ DatabaseTransactionRetryServiceProvider
             └── QueryExceptionLogger → QueryExceptionWriter → db_exceptions
 ```
 
+### Runtime toggle
+
+`RetryToggle` (`src/Support/`) checks `config('database-transaction-retry.state_path')` — a file whose presence/absence enables or disables retries at runtime without redeploying. `StartRetryCommand` and `StopRetryCommand` create/remove this file.
+
+### Console commands
+
+- `InstallCommand` — publishes config, migrations, and dashboard assets
+- `StartRetryCommand` / `StopRetryCommand` — create/remove the state file to toggle retries at runtime
+- `RollPartitionsCommand` — rotates/partitions the log tables
+
 ### Support layer
 
-Three helpers used across monitors and writers:
+Helpers used across monitors and writers:
 - `RequestContext` — extracts current HTTP request metadata
 - `TimeHelper` — duration/timing calculations
 - `SerializationHelper` — normalizes exception data for storage
+- `DashboardAssets` — maps URL paths to files in `dashboard/out/` with path-traversal protection
 
 ### Dashboard
 
